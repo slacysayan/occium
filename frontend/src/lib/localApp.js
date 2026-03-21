@@ -1,7 +1,7 @@
 import axios from "axios";
 import { appEnv } from "../config/env";
 
-const STORAGE_KEY = "occium.local.app.v1";
+const STORAGE_KEY = "occium.local.app.v2";
 const LOCAL_USER_ID = "local_owner";
 
 const toneMap = {
@@ -131,6 +131,9 @@ function buildAccount({
   channelId = null,
   linkedinId = null,
   connectionMode = "local",
+  accessToken = null,
+  tokenExpiresAt = null,
+  scope = "",
 }) {
   const accountId = id || createId("account");
 
@@ -143,9 +146,10 @@ function buildAccount({
     channel_id: channelId,
     linkedin_id: linkedinId,
     profile_picture: profilePicture,
-    access_token: null,
+    access_token: accessToken,
     refresh_token: null,
-    token_expires_at: null,
+    token_expires_at: tokenExpiresAt,
+    scope,
     is_active: true,
     connection_mode: connectionMode,
     created_at: new Date().toISOString(),
@@ -207,6 +211,75 @@ function buildFallbackVideoDescription(url, author) {
   return `Imported from YouTube${authorLine}.\n\nSource: ${url}`;
 }
 
+function parseTags(tags) {
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => String(tag).trim()).filter(Boolean);
+  }
+
+  if (typeof tags === "string" && tags.trim()) {
+    return tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+async function fetchHelper(path, options = {}) {
+  const url = `${appEnv.localHelperUrl}${path}`;
+  const response = await axios({
+    url,
+    method: options.method || "get",
+    data: options.data,
+    timeout: options.timeout || 1500,
+    headers: options.headers,
+  });
+
+  return response.data;
+}
+
+async function fetchMetadataWithYouTubeApi(url, videoId) {
+  if (!appEnv.youtubeApiKey || !videoId) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
+      params: {
+        part: "snippet,contentDetails",
+        id: videoId,
+        key: appEnv.youtubeApiKey,
+      },
+      timeout: 3000,
+    });
+
+    const item = response.data?.items?.[0];
+
+    if (!item) {
+      return null;
+    }
+
+    return {
+      title: item.snippet?.title || "Imported Video",
+      description: item.snippet?.description || buildFallbackVideoDescription(url, item.snippet?.channelTitle),
+      thumbnail:
+        item.snippet?.thumbnails?.maxres?.url ||
+        item.snippet?.thumbnails?.high?.url ||
+        item.snippet?.thumbnails?.default?.url ||
+        "",
+      duration: item.contentDetails?.duration || "",
+      view_count: 0,
+      uploader: item.snippet?.channelTitle || "Unknown",
+      source_url: url,
+      metadata_source: "youtube-api",
+    };
+  } catch (error) {
+    console.error("YouTube API metadata lookup failed", error);
+    return null;
+  }
+}
+
 export function ensureLocalSession() {
   const state = ensureState();
   return {
@@ -227,6 +300,11 @@ export function resetLocalUser() {
 export function getAccounts(userId) {
   const state = ensureState();
   return sortByNewest(state.accounts.filter((account) => account.user_id === userId));
+}
+
+export function getAccountById(accountId) {
+  const state = ensureState();
+  return state.accounts.find((account) => account._id === accountId) || null;
 }
 
 export function deleteAccount(accountId) {
@@ -278,7 +356,13 @@ export function connectLinkedInAccount() {
   return nextAccount;
 }
 
-export function connectYouTubeAccountFromGoogle({ googleProfile, channelProfile }) {
+export function connectYouTubeAccountFromGoogle({
+  googleProfile,
+  channelProfile,
+  accessToken,
+  expiresIn,
+  scope,
+}) {
   const accountName =
     channelProfile?.snippet?.title ||
     googleProfile?.name ||
@@ -289,6 +373,9 @@ export function connectYouTubeAccountFromGoogle({ googleProfile, channelProfile 
     googleProfile?.picture ||
     null;
   const channelId = channelProfile?.id || googleProfile?.sub || googleProfile?.id || createId("yt");
+  const tokenExpiresAt = expiresIn
+    ? new Date(Date.now() + expiresIn * 1000).toISOString()
+    : null;
 
   const state = updateState((current) => ({
     ...current,
@@ -307,6 +394,9 @@ export function connectYouTubeAccountFromGoogle({ googleProfile, channelProfile 
     profilePicture,
     channelId,
     connectionMode: "google",
+    accessToken,
+    tokenExpiresAt,
+    scope,
   });
 
   upsertAccount(
@@ -329,11 +419,7 @@ export function createPost(payload) {
   const now = new Date().toISOString();
   const status = payload.status || (payload.scheduled_at ? "scheduled" : "draft");
   const postId = createId("post");
-  const tags = Array.isArray(payload.tags)
-    ? payload.tags
-    : typeof payload.tags === "string" && payload.tags.trim()
-      ? payload.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
-      : [];
+  const tags = parseTags(payload.tags);
 
   const nextPost = {
     _id: postId,
@@ -347,11 +433,15 @@ export function createPost(payload) {
     tags,
     source_url: payload.source_url || null,
     thumbnail_url: payload.thumbnail_url || null,
+    privacy_status: payload.privacy_status || null,
     status,
     scheduled_at: payload.scheduled_at || null,
     published_at: status === "published" ? now : null,
-    platform_post_id: null,
-    error_message: null,
+    platform_post_id: payload.platform_post_id || null,
+    platform_post_url: payload.platform_post_url || null,
+    upload_mode: payload.upload_mode || "local",
+    helper_status: payload.helper_status || null,
+    error_message: payload.error_message || null,
     created_at: now,
   };
 
@@ -402,11 +492,50 @@ export async function ghostwrite({ prompt, platform, tone = "professional" }) {
   };
 }
 
+export async function getLocalHelperStatus() {
+  try {
+    const response = await fetchHelper("/health", { timeout: 1200 });
+    return {
+      available: true,
+      ...response,
+    };
+  } catch (error) {
+    return {
+      available: false,
+      status: "offline",
+      error: error?.message || "Local helper unavailable",
+    };
+  }
+}
+
 export async function fetchVideoMetadata(url) {
+  const helperStatus = await getLocalHelperStatus();
   const videoId = extractYouTubeVideoId(url);
   const fallbackThumbnail = videoId
     ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
     : "";
+
+  if (helperStatus.available) {
+    try {
+      const response = await fetchHelper("/api/youtube/metadata", {
+        method: "post",
+        data: { url },
+        timeout: 15000,
+      });
+
+      return {
+        ...response,
+        metadata_source: "local-helper",
+      };
+    } catch (error) {
+      console.error("Local helper metadata lookup failed", error);
+    }
+  }
+
+  const apiMetadata = await fetchMetadataWithYouTubeApi(url, videoId);
+  if (apiMetadata) {
+    return apiMetadata;
+  }
 
   try {
     const response = await axios.get("https://www.youtube.com/oembed", {
@@ -414,16 +543,18 @@ export async function fetchVideoMetadata(url) {
         url,
         format: "json",
       },
+      timeout: 3000,
     });
 
     return {
       title: response.data.title || "Imported Video",
       description: buildFallbackVideoDescription(url, response.data.author_name),
       thumbnail: response.data.thumbnail_url || fallbackThumbnail,
-      duration: 0,
+      duration: "",
       view_count: 0,
       uploader: response.data.author_name || "Unknown",
       source_url: url,
+      metadata_source: "oembed",
     };
   } catch (error) {
     console.error("Failed to fetch YouTube metadata, using fallback", error);
@@ -432,10 +563,47 @@ export async function fetchVideoMetadata(url) {
       title: videoId ? `Imported video ${videoId}` : "Imported Video",
       description: buildFallbackVideoDescription(url),
       thumbnail: fallbackThumbnail,
-      duration: 0,
+      duration: "",
       view_count: 0,
       uploader: "Unknown",
       source_url: url,
+      metadata_source: "fallback",
     };
   }
+}
+
+export async function uploadYouTubeImport({
+  account,
+  sourceUrl,
+  title,
+  description,
+  tags,
+  privacyStatus,
+  publishAt,
+}) {
+  if (!account?.access_token) {
+    throw new Error("Reconnect the YouTube channel before uploading.");
+  }
+
+  const helperStatus = await getLocalHelperStatus();
+  if (!helperStatus.available) {
+    throw new Error(`Start the local helper at ${appEnv.localHelperUrl} before importing.`);
+  }
+
+  const response = await fetchHelper("/api/youtube/upload", {
+    method: "post",
+    timeout: 1200000,
+    data: {
+      url: sourceUrl,
+      accessToken: account.access_token,
+      title,
+      description,
+      tags: parseTags(tags),
+      privacyStatus,
+      publishAt,
+      channelId: account.channel_id,
+    },
+  });
+
+  return response;
 }

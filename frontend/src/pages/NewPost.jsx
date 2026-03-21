@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { useForm } from "react-hook-form";
@@ -11,23 +11,52 @@ import {
   X,
   Link,
   PlayCircle,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { createPost, fetchVideoMetadata, getAccounts, ghostwrite } from "../lib/localApp";
+import {
+  createPost,
+  fetchVideoMetadata,
+  getAccountById,
+  getAccounts,
+  getLocalHelperStatus,
+  ghostwrite,
+  uploadYouTubeImport,
+} from "../lib/localApp";
+
+const defaultValues = {
+  source_url: "",
+  title: "",
+  description: "",
+  thumbnail_url: "",
+  privacy_status: "private",
+  tags_input: "",
+};
 
 const NewPost = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("youtube");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
+  const [helperStatus, setHelperStatus] = useState({ available: false, status: "checking" });
+  const [metadataSource, setMetadataSource] = useState("");
 
-  const { register, handleSubmit, setValue, watch, reset } = useForm();
+  const { register, handleSubmit, setValue, watch, reset } = useForm({
+    defaultValues,
+  });
+
+  const youtubeAccounts = useMemo(
+    () => accounts.filter((account) => account.platform === "youtube"),
+    [accounts],
+  );
 
   useEffect(() => {
     if (!user) {
@@ -51,6 +80,30 @@ const NewPost = () => {
     }
   }, [activeTab, accounts]);
 
+  useEffect(() => {
+    if (activeTab !== "youtube") {
+      return;
+    }
+
+    let isMounted = true;
+
+    const checkHelper = async () => {
+      const nextStatus = await getLocalHelperStatus();
+      if (isMounted) {
+        setHelperStatus(nextStatus);
+      }
+    };
+
+    checkHelper();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab]);
+
+  const helperLabel = helperStatus.available ? "Helper online" : "Helper offline";
+  const selectedYouTubeAccount = selectedAccount ? getAccountById(selectedAccount) : null;
+
   const handleVideoMetadataFetch = async () => {
     const url = watch("source_url");
     if (!url) {
@@ -66,6 +119,7 @@ const NewPost = () => {
       setValue("description", metadata.description);
       setValue("thumbnail_url", metadata.thumbnail);
       setVideoPreview(metadata.thumbnail);
+      setMetadataSource(metadata.metadata_source || "");
 
       toast.dismiss(toastId);
       toast.success("Video imported!");
@@ -76,29 +130,80 @@ const NewPost = () => {
     }
   };
 
+  const resetFormState = () => {
+    reset(defaultValues);
+    setVideoPreview(null);
+    setScheduleDate(null);
+    setMetadataSource("");
+  };
+
   const onSubmit = async (data) => {
     if (!selectedAccount) {
       return toast.error(`Please connect a ${activeTab} account first`);
     }
 
+    setIsSubmitting(true);
+
     try {
-      const payload = {
+      if (activeTab === "youtube") {
+        const account = getAccountById(selectedAccount);
+        const publishAt = scheduleDate ? scheduleDate.toISOString() : null;
+        const requestedPrivacy = data.privacy_status || "private";
+
+        if (!account?.access_token) {
+          throw new Error("Reconnect the YouTube channel before uploading.");
+        }
+
+        const uploadResult = await uploadYouTubeImport({
+          account,
+          sourceUrl: data.source_url,
+          title: data.title,
+          description: data.description,
+          tags: data.tags_input,
+          privacyStatus: requestedPrivacy,
+          publishAt,
+        });
+
+        createPost({
+          user_id: user.id,
+          account_id: selectedAccount,
+          platform: "youtube",
+          content_type: "video",
+          title: data.title,
+          description: data.description,
+          tags: data.tags_input,
+          source_url: data.source_url,
+          thumbnail_url: data.thumbnail_url,
+          privacy_status: uploadResult.privacyStatus,
+          scheduled_at: publishAt,
+          status: publishAt ? "scheduled" : "published",
+          platform_post_id: uploadResult.videoId,
+          platform_post_url: uploadResult.videoUrl,
+          upload_mode: "local-helper",
+          helper_status: "uploaded",
+        });
+
+        toast.success(publishAt ? "Video uploaded and scheduled on YouTube!" : "Video uploaded to YouTube!");
+        resetFormState();
+        return;
+      }
+
+      createPost({
         user_id: user.id,
         account_id: selectedAccount,
         platform: activeTab,
         ...data,
         scheduled_at: scheduleDate ? scheduleDate.toISOString() : null,
         status: scheduleDate ? "scheduled" : "draft",
-      };
+      });
 
-      createPost(payload);
-      toast.success("Post scheduled successfully!");
-      reset();
-      setVideoPreview(null);
-      setScheduleDate(null);
+      toast.success("Post saved successfully!");
+      resetFormState();
     } catch (error) {
       console.error(error);
-      toast.error("Failed to create post");
+      toast.error(error?.message || "Failed to create post");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -184,6 +289,20 @@ const NewPost = () => {
 
               {activeTab === "youtube" && (
                 <div className="space-y-6">
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-start gap-3">
+                    {helperStatus.available ? (
+                      <CheckCircle2 size={18} className="text-emerald-300 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle size={18} className="text-amber-300 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-white text-sm font-medium">{helperLabel}</p>
+                      <p className="text-white/40 text-xs mt-1">
+                        Vercel hosts the app. The localhost helper handles yt-dlp and the YouTube upload handoff from your own machine.
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex items-center gap-2">
                       <Link size={14} /> Import from YouTube
@@ -202,6 +321,9 @@ const NewPost = () => {
                         Fetch
                       </button>
                     </div>
+                    {metadataSource && (
+                      <p className="text-white/30 text-xs">Metadata source: {metadataSource}</p>
+                    )}
                   </div>
 
                   {videoPreview && (
@@ -213,13 +335,32 @@ const NewPost = () => {
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Title</label>
-                    <input
-                      {...register("title")}
-                      className="w-full glass-input rounded-lg px-4 py-3 text-lg font-medium"
-                      placeholder="Video Title"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Title</label>
+                      <input
+                        {...register("title")}
+                        className="w-full glass-input rounded-lg px-4 py-3 text-lg font-medium"
+                        placeholder="Video Title"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
+                      <select
+                        {...register("privacy_status")}
+                        className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
+                      >
+                        <option value="private" className="text-black">
+                          Private
+                        </option>
+                        <option value="unlisted" className="text-black">
+                          Unlisted
+                        </option>
+                        <option value="public" className="text-black">
+                          Public
+                        </option>
+                      </select>
+                    </div>
                   </div>
 
                   <div className="space-y-2 flex-1">
@@ -245,6 +386,21 @@ const NewPost = () => {
                       placeholder="Video description..."
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags</label>
+                    <input
+                      {...register("tags_input")}
+                      className="w-full glass-input rounded-lg px-4 py-3"
+                      placeholder="marketing, ai, growth"
+                    />
+                  </div>
+
+                  {selectedYouTubeAccount?.token_expires_at && (
+                    <p className="text-white/30 text-xs">
+                      Channel token valid until {format(new Date(selectedYouTubeAccount.token_expires_at), "MMM d, h:mm a")}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -293,9 +449,20 @@ const NewPost = () => {
                 </div>
                 <button
                   type="submit"
-                  className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5"
+                  disabled={isSubmitting}
+                  className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
                 >
-                  {scheduleDate ? "Schedule Post" : "Post Now"}
+                  {isSubmitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" /> Working...
+                    </span>
+                  ) : scheduleDate ? (
+                    "Schedule Post"
+                  ) : activeTab === "youtube" ? (
+                    "Upload to YouTube"
+                  ) : (
+                    "Post Now"
+                  )}
                 </button>
               </div>
             </form>
@@ -342,6 +509,23 @@ const NewPost = () => {
               )}
             </AnimatePresence>
           </GlassCard>
+
+          {activeTab === "youtube" && (
+            <GlassCard>
+              <h3 className="text-lg font-medium text-white mb-4">YouTube Import Flow</h3>
+              <div className="space-y-3 text-sm text-white/45">
+                <p>1. Connect the destination channel from the Accounts page.</p>
+                <p>2. Paste a source video URL and pull metadata.</p>
+                <p>3. Edit title, description, privacy, tags, and schedule.</p>
+                <p>4. The localhost helper downloads with yt-dlp and uploads to the selected channel.</p>
+              </div>
+              {youtubeAccounts.length === 0 && (
+                <a href="/accounts" className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5">
+                  Connect a YouTube channel first
+                </a>
+              )}
+            </GlassCard>
+          )}
         </div>
       </div>
     </div>

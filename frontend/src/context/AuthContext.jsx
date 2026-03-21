@@ -143,6 +143,9 @@ const GoogleAuthProvider = ({ children }) => {
         const result = connectYouTubeAccountFromGoogle({
           googleProfile,
           channelProfile,
+          accessToken: tokenResponse.access_token,
+          expiresIn: tokenResponse.expires_in,
+          scope: tokenResponse.scope,
         });
 
         pendingRequestRef.current.resolve?.(result);
