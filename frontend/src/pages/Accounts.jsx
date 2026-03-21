@@ -3,6 +3,7 @@ import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { Check, Plus, Trash2, Youtube, Linkedin, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { appEnv } from "../config/env";
 import { deleteAccount, getAccounts } from "../lib/localApp";
 
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
@@ -11,6 +12,8 @@ const Accounts = () => {
   const { user, connectYouTubeAccount, connectLinkedInAccount } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const youtubeOAuthReady = appEnv.enableGoogleConnect && Boolean(appEnv.googleClientId);
+  const youtubeMetadataReady = Boolean(appEnv.youtubeApiKey);
 
   useEffect(() => {
     if (user) {
@@ -34,7 +37,7 @@ const Accounts = () => {
       toast.success("LinkedIn connected successfully!");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to connect LinkedIn");
+      toast.error(error?.message || "Failed to connect LinkedIn");
     } finally {
       setIsLoading(false);
     }
@@ -48,7 +51,7 @@ const Accounts = () => {
       toast.success("YouTube connected successfully!");
     } catch (error) {
       console.error(error);
-      toast.error("Could not connect YouTube");
+      toast.error(error?.message || "Could not connect YouTube");
     } finally {
       setIsLoading(false);
     }
@@ -224,7 +227,17 @@ const Accounts = () => {
         <div>
           <h4 className="text-white font-medium text-sm">Connection Status</h4>
           <p className="text-white/40 text-sm mt-1">
-            In local mode, LinkedIn stays browser-backed and YouTube can use live Google auth when a client ID is configured.
+            {youtubeOAuthReady
+              ? "YouTube OAuth is configured on this deployment."
+              : "YouTube OAuth is not configured on this deployment. Add REACT_APP_GOOGLE_CLIENT_ID in Vercel and redeploy."}
+          </p>
+          <p className="text-white/40 text-sm mt-1">
+            {youtubeMetadataReady
+              ? "YouTube metadata API key detected."
+              : "No YouTube API key is present in this build, so metadata falls back to public YouTube endpoints when possible."}
+          </p>
+          <p className="text-white/40 text-sm mt-1">
+            LinkedIn stays browser-backed for now while YouTube is the active integration.
           </p>
         </div>
       </div>
