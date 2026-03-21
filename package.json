@@ -1,12 +1,9 @@
 {
-  "dependencies": {
-    "@fontsource/manrope": "^5.2.8",
-    "@react-oauth/google": "^0.13.4",
-    "axios": "^1.13.6",
-    "date-fns": "^4.1.0",
-    "framer-motion": "^12.38.0",
-    "gsap": "^3.14.2",
-    "lucide-react": "^0.577.0",
-    "react-day-picker": "^9.14.0"
+  "name": "occium-local",
+  "private": true,
+  "scripts": {
+    "install:frontend": "npm install --prefix frontend",
+    "start": "npm start --prefix frontend",
+    "build": "npm run build --prefix frontend"
   }
 }

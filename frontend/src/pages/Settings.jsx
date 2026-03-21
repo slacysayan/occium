@@ -22,7 +22,6 @@ const Settings = () => {
     };
 
     const handleSave = () => {
-        // Here we would save to backend/encrypted storage
         toast.success("Settings saved successfully");
     };
 

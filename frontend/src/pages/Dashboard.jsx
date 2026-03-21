@@ -1,214 +1,239 @@
-import React, { useEffect, useState } from 'react';
-import { GlassCard } from '../components/ui/GlassCard';
-import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
-import { Activity, CheckCircle, Clock, AlertCircle, TrendingUp, Users, Eye } from 'lucide-react';
-import { format } from 'date-fns';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { motion } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { GlassCard } from "../components/ui/GlassCard";
+import { useAuth } from "../context/AuthContext";
+import {
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  Link2,
+  PenSquare,
+} from "lucide-react";
+import { format } from "date-fns";
+import { getAccounts, getPosts } from "../lib/localApp";
 
 const Dashboard = () => {
-  const { user, token } = useAuth();
-  const [stats, setStats] = useState({ scheduled: 0, published: 0, failed: 0 });
+  const { user } = useAuth();
+  const [accounts, setAccounts] = useState([]);
   const [posts, setPosts] = useState([]);
-  const API_URL = process.env.REACT_APP_BACKEND_URL;
-
-  // Mock data for chart
-  const data = [
-    { name: 'Mon', views: 4000 },
-    { name: 'Tue', views: 3000 },
-    { name: 'Wed', views: 2000 },
-    { name: 'Thu', views: 2780 },
-    { name: 'Fri', views: 1890 },
-    { name: 'Sat', views: 2390 },
-    { name: 'Sun', views: 3490 },
-  ];
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!token || !user) return;
-      try {
-        // Mock if demo
-        if (user.id === 'demo_user_123') {
-            setPosts([
-                { _id: '1', title: 'Launch Day Vlog', platform: 'youtube', status: 'published', scheduled_at: new Date().toISOString() },
-                { _id: '2', title: 'Product Update', platform: 'linkedin', status: 'scheduled', scheduled_at: new Date(Date.now() + 86400000).toISOString() },
-                { _id: '3', title: 'Tech Stack Review', platform: 'youtube', status: 'draft', scheduled_at: null },
-            ]);
-            setStats({ scheduled: 1, published: 5, failed: 0 });
-            return;
-        }
+    if (!user) {
+      return;
+    }
 
-        const res = await axios.get(`${API_URL}/posts/${user.id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setPosts(res.data);
-        const scheduled = res.data.filter(p => p.status === 'scheduled').length;
-        const published = res.data.filter(p => p.status === 'published').length;
-        const failed = res.data.filter(p => p.status === 'failed').length;
-        setStats({ scheduled, published, failed });
-      } catch (error) {
-        console.error("Error fetching dashboard data", error);
-      }
+    setAccounts(getAccounts(user.id));
+    setPosts(getPosts(user.id));
+  }, [user]);
+
+  const stats = useMemo(() => {
+    const drafts = posts.filter((post) => post.status === "draft").length;
+    const scheduled = posts.filter((post) => post.status === "scheduled").length;
+    const published = posts.filter((post) => post.status === "published").length;
+
+    return {
+      connectedAccounts: accounts.length,
+      drafts,
+      scheduled,
+      published,
     };
-    fetchData();
-  }, [user, token, API_URL]);
+  }, [accounts, posts]);
+
+  const funnelSteps = useMemo(() => {
+    const hasAccounts = stats.connectedAccounts > 0;
+    const hasPosts = posts.length > 0;
+    const hasLiveContent = stats.scheduled + stats.published > 0;
+
+    return [
+      {
+        title: "Connect an account",
+        description: "Link a YouTube channel or LinkedIn profile so the workspace has a destination.",
+        href: "/accounts",
+        action: hasAccounts ? "Manage accounts" : "Connect account",
+        icon: Link2,
+        done: hasAccounts,
+      },
+      {
+        title: "Create your first post",
+        description: "Draft a post or import a video so the workspace has content to work with.",
+        href: "/new",
+        action: hasPosts ? "Create another post" : "Create first post",
+        icon: PenSquare,
+        done: hasPosts,
+      },
+      {
+        title: "Schedule or publish",
+        description: "Move content out of draft so your queue starts doing real work.",
+        href: hasLiveContent ? "/queue" : "/new",
+        action: hasLiveContent ? "Open queue" : "Schedule a post",
+        icon: CalendarClock,
+        done: hasLiveContent,
+      },
+    ];
+  }, [posts.length, stats.connectedAccounts, stats.published, stats.scheduled]);
+
+  const completedSteps = funnelSteps.filter((step) => step.done).length;
+  const nextStep = funnelSteps.find((step) => !step.done) || funnelSteps[funnelSteps.length - 1];
 
   return (
     <div className="space-y-10">
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-end gap-6">
         <div>
-            <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
-            <p className="text-white/40 font-light">Welcome back, {user?.name.split(' ')[0]}. Here is your content velocity.</p>
+          <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
+          <p className="text-white/40 font-light">
+            Welcome back, {user?.name.split(" ")[0]}. This workspace now reflects only real local data.
+          </p>
         </div>
         <div className="text-right hidden md:block">
-             <p className="text-occium-gold font-mono text-sm">{format(new Date(), 'EEEE, MMMM do')}</p>
+          <p className="text-occium-gold font-mono text-sm">{format(new Date(), "EEEE, MMMM do")}</p>
         </div>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatsCard 
-            icon={Clock} 
-            label="Scheduled" 
-            value={stats.scheduled} 
-            color="text-blue-400" 
-            bg="bg-blue-500/10" 
-            delay={0.1}
-        />
-        <StatsCard 
-            icon={CheckCircle} 
-            label="Published" 
-            value={stats.published} 
-            color="text-green-400" 
-            bg="bg-green-500/10" 
-            delay={0.2}
-        />
-        <StatsCard 
-            icon={Eye} 
-            label="Total Views" 
-            value="12.5K" 
-            color="text-purple-400" 
-            bg="bg-purple-500/10" 
-            delay={0.3}
-        />
-         <StatsCard 
-            icon={Users} 
-            label="Subscribers" 
-            value="3,402" 
-            color="text-occium-gold" 
-            bg="bg-yellow-500/10" 
-            delay={0.4}
-        />
+        <SummaryCard icon={Link2} label="Connected" value={stats.connectedAccounts} detail="Accounts ready" />
+        <SummaryCard icon={FileText} label="Drafts" value={stats.drafts} detail="Posts to refine" />
+        <SummaryCard icon={Clock3} label="Scheduled" value={stats.scheduled} detail="Queued to go out" />
+        <SummaryCard icon={CheckCircle2} label="Published" value={stats.published} detail="Already completed" />
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Chart Section */}
-        <GlassCard className="lg:col-span-2 min-h-[400px] flex flex-col" delay={0.5}>
-            <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl font-medium text-white flex items-center gap-2">
-                    <TrendingUp size={20} className="text-white/40" />
-                    Engagement Growth
-                </h3>
-                <select className="bg-white/5 border border-white/10 rounded-lg text-white/60 text-sm px-3 py-1 outline-none">
-                    <option>Last 7 Days</option>
-                    <option>Last 30 Days</option>
-                </select>
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,0.8fr] gap-8">
+        <GlassCard className="space-y-8" delay={0.1}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Bridge The Gap</p>
+              <h2 className="text-3xl font-light text-white tracking-tight">Simple funnel to first momentum</h2>
             </div>
-            
-            <div className="flex-1 w-full h-full min-h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data}>
-                        <defs>
-                            <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#D4AF37" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                        <XAxis dataKey="name" stroke="rgba(255,255,255,0.2)" tick={{fill: 'rgba(255,255,255,0.4)', fontSize: 12}} tickLine={false} axisLine={false} />
-                        <YAxis stroke="rgba(255,255,255,0.2)" tick={{fill: 'rgba(255,255,255,0.4)', fontSize: 12}} tickLine={false} axisLine={false} />
-                        <Tooltip 
-                            contentStyle={{ backgroundColor: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                            itemStyle={{ color: '#fff' }}
-                        />
-                        <Area type="monotone" dataKey="views" stroke="#D4AF37" strokeWidth={2} fillOpacity={1} fill="url(#colorViews)" />
-                    </AreaChart>
-                </ResponsiveContainer>
+            <div className="text-sm text-white/50">
+              {completedSteps}/{funnelSteps.length} complete
             </div>
-        </GlassCard>
+          </div>
 
-        {/* Recent Activity Feed */}
-        <GlassCard className="min-h-[400px]" delay={0.6}>
-            <h3 className="text-xl font-medium text-white mb-6 flex items-center gap-2">
-                <Activity size={20} className="text-white/40" />
-                Recent Activity
-            </h3>
-            <div className="space-y-4 relative">
-                 {/* Timeline Line */}
-                 <div className="absolute left-4 top-2 bottom-2 w-[1px] bg-white/5"></div>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className="h-full bg-occium-gold transition-all duration-500"
+              style={{ width: `${(completedSteps / funnelSteps.length) * 100}%` }}
+            />
+          </div>
 
-                {posts.slice(0, 5).map((post, i) => (
-                    <motion.div 
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.7 + (i * 0.1) }}
-                        key={post._id} 
-                        className="relative pl-10 py-2 group"
-                    >
-                        {/* Timeline Dot */}
-                        <div className={`absolute left-[13px] top-4 w-2 h-2 rounded-full border border-black ${
-                            post.status === 'published' ? 'bg-green-400' :
-                            post.status === 'scheduled' ? 'bg-blue-400' :
-                            'bg-white/40'
-                        }`}></div>
+          <div className="space-y-4">
+            {funnelSteps.map((step, index) => {
+              const Icon = step.icon;
 
-                        <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all cursor-pointer group-hover:translate-x-1">
-                            <div className="flex justify-between items-start mb-1">
-                                <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${
-                                    post.platform === 'youtube' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'
-                                }`}>{post.platform}</span>
-                                <span className="text-white/30 text-xs">{post.scheduled_at ? format(new Date(post.scheduled_at), 'MMM d') : 'Draft'}</span>
-                            </div>
-                            <p className="font-medium text-white truncate">{post.title || post.description || "Untitled Post"}</p>
-                            <p className="text-white/40 text-xs mt-1 capitalize">{post.status}</p>
-                        </div>
-                    </motion.div>
-                ))}
-                
-                <motion.div 
-                    initial={{ opacity: 0 }} 
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 1.2 }}
-                    className="pl-10 pt-4"
+              return (
+                <div
+                  key={step.title}
+                  className={`rounded-2xl border p-5 transition-colors ${
+                    step.done ? "border-emerald-400/20 bg-emerald-500/5" : "border-white/10 bg-white/5"
+                  }`}
                 >
-                    <a href="/new" className="flex items-center gap-2 text-white/40 hover:text-occium-gold transition-colors text-sm font-medium group">
-                        <div className="w-8 h-8 rounded-full border border-dashed border-white/20 flex items-center justify-center group-hover:border-occium-gold/50">
-                            <span className="text-lg">+</span>
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+                        step.done ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white"
+                      }`}
+                    >
+                      {step.done ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Step {index + 1}</p>
+                          <h3 className="text-xl text-white font-medium">{step.title}</h3>
                         </div>
-                        Create New
-                    </a>
-                </motion.div>
-            </div>
+                        <span className={`text-xs uppercase tracking-[0.18em] ${step.done ? "text-emerald-300" : "text-white/35"}`}>
+                          {step.done ? "Complete" : "Pending"}
+                        </span>
+                      </div>
+                      <p className="text-white/45 text-sm mt-3 max-w-2xl">{step.description}</p>
+                      <Link
+                        to={step.href}
+                        className="inline-flex items-center gap-2 text-sm text-occium-gold hover:text-white transition-colors mt-4"
+                      >
+                        {step.action} <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </GlassCard>
+
+        <div className="space-y-8">
+          <GlassCard delay={0.15}>
+            <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Next Move</p>
+            <h2 className="text-2xl font-light text-white tracking-tight">{nextStep.title}</h2>
+            <p className="text-white/45 text-sm mt-3">{nextStep.description}</p>
+            <Link
+              to={nextStep.href}
+              className="inline-flex items-center gap-2 bg-white text-black px-5 py-3 rounded-full font-medium hover:scale-105 transition-transform mt-6"
+            >
+              {nextStep.action} <ArrowRight size={16} />
+            </Link>
+          </GlassCard>
+
+          <GlassCard delay={0.2}>
+            <div className="flex items-end justify-between gap-4 mb-6">
+              <div>
+                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Recent Posts</p>
+                <h2 className="text-2xl font-light text-white tracking-tight">What is in motion</h2>
+              </div>
+              <Link to="/new" className="text-sm text-occium-gold hover:text-white transition-colors">
+                Create new
+              </Link>
+            </div>
+
+            {posts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center">
+                <p className="text-white/55">No posts yet.</p>
+                <p className="text-white/35 text-sm mt-2">Once you create content, it will show up here instead of mock analytics.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {posts.slice(0, 5).map((post) => (
+                  <div key={post._id} className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <span
+                        className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded-full ${
+                          post.platform === "youtube" ? "bg-red-500/10 text-red-300" : "bg-blue-500/10 text-blue-300"
+                        }`}
+                      >
+                        {post.platform}
+                      </span>
+                      <span className="text-xs text-white/30 capitalize">{post.status}</span>
+                    </div>
+                    <p className="text-white font-medium mt-3 line-clamp-1">{post.title || post.description || "Untitled Post"}</p>
+                    <p className="text-white/35 text-xs mt-2">
+                      {post.scheduled_at
+                        ? `Scheduled for ${format(new Date(post.scheduled_at), "MMM d, h:mm a")}`
+                        : `Created ${format(new Date(post.created_at), "MMM d, h:mm a")}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+        </div>
       </div>
     </div>
   );
 };
 
-const StatsCard = ({ icon: Icon, label, value, color, bg, delay }) => (
-    <GlassCard className="p-6 relative overflow-hidden group" delay={delay}>
-        <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full ${bg} blur-2xl group-hover:scale-150 transition-transform duration-700`}></div>
-        <div className="relative z-10">
-            <div className={`w-12 h-12 rounded-xl ${bg} flex items-center justify-center mb-4 ${color}`}>
-                <Icon size={24} />
-            </div>
-            <h2 className="text-3xl font-medium text-white tracking-tight mb-1">{value}</h2>
-            <p className="text-white/40 text-sm font-medium uppercase tracking-wider">{label}</p>
-        </div>
-    </GlassCard>
+const SummaryCard = ({ icon: Icon, label, value, detail }) => (
+  <GlassCard className="p-6" delay={0.05}>
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-white/35 text-xs uppercase tracking-[0.2em] mb-3">{label}</p>
+        <h2 className="text-4xl font-light text-white tracking-tight">{value}</h2>
+        <p className="text-white/35 text-sm mt-2">{detail}</p>
+      </div>
+      <div className="w-12 h-12 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center text-white/75">
+        <Icon size={20} />
+      </div>
+    </div>
+  </GlassCard>
 );
 
 export default Dashboard;
