@@ -33,12 +33,16 @@ For the existing popup-based browser flow, use these exact settings in Google Cl
 ## Local helper run
 
 1. Install `yt-dlp` on your machine and make sure it is available on PATH
-2. `npm run install:helper`
-3. `npm run start:helper`
+2. From the repo root, run `start-helper.bat`
 
 Quick start command:
 
-- `npm run install:helper && npm run start:helper`
+- `start-helper.bat`
+
+Manual fallback:
+
+- `npm run install:helper`
+- `npm run start:helper`
 
 The helper listens on `http://127.0.0.1:4315` and is only used for:
 

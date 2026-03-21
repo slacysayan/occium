@@ -28,7 +28,7 @@ import {
   uploadYouTubeImport,
 } from "../lib/localApp";
 
-const HELPER_BOOT_COMMAND = "npm run install:helper && npm run start:helper";
+const HELPER_BOOT_COMMAND = "start-helper.bat";
 
 const defaultValues = {
   source_url: "",
@@ -346,7 +346,7 @@ const NewPost = () => {
                       {!helperStatus.available && (
                         <div className="mt-3 space-y-2">
                           <p className="text-white/55 text-xs">
-                            Run the helper locally, then come back here and refresh helper status.
+                            Run the helper locally from the repo root, then come back here and refresh helper status.
                           </p>
                           <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white/80 text-xs font-mono break-all">
                             {HELPER_BOOT_COMMAND}
