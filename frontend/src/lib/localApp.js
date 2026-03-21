@@ -496,7 +496,7 @@ export async function getLocalHelperStatus() {
   try {
     const response = await fetchHelper("/health", { timeout: 1200 });
     return {
-      available: true,
+      available: response.status === "ok",
       ...response,
     };
   } catch (error) {

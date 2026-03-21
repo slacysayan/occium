@@ -36,11 +36,17 @@ For the existing popup-based browser flow, use these exact settings in Google Cl
 2. `npm run install:helper`
 3. `npm run start:helper`
 
+Quick start command:
+
+- `npm run install:helper && npm run start:helper`
+
 The helper listens on `http://127.0.0.1:4315` and is only used for:
 
 - pulling video metadata via `yt-dlp`
 - downloading a source YouTube video locally
 - uploading that video to the connected destination YouTube channel
+
+If the app says `Helper online, yt-dlp missing`, the local helper is running but `yt-dlp` still is not installed or not on your system PATH.
 
 ## Flow
 

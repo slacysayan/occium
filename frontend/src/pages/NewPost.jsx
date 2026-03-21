@@ -28,6 +28,8 @@ import {
   uploadYouTubeImport,
 } from "../lib/localApp";
 
+const HELPER_BOOT_COMMAND = "npm run install:helper && npm run start:helper";
+
 const defaultValues = {
   source_url: "",
   title: "",
@@ -48,6 +50,7 @@ const NewPost = () => {
   const [videoPreview, setVideoPreview] = useState(null);
   const [helperStatus, setHelperStatus] = useState({ available: false, status: "checking" });
   const [metadataSource, setMetadataSource] = useState("");
+  const [isCheckingHelper, setIsCheckingHelper] = useState(false);
 
   const { register, handleSubmit, setValue, watch, reset } = useForm({
     defaultValues,
@@ -88,21 +91,53 @@ const NewPost = () => {
     let isMounted = true;
 
     const checkHelper = async () => {
+      setIsCheckingHelper(true);
       const nextStatus = await getLocalHelperStatus();
       if (isMounted) {
         setHelperStatus(nextStatus);
+        setIsCheckingHelper(false);
       }
     };
 
     checkHelper();
 
+    const intervalId = window.setInterval(checkHelper, 10000);
+
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, [activeTab]);
 
-  const helperLabel = helperStatus.available ? "Helper online" : "Helper offline";
+  const helperLabel = helperStatus.available
+    ? "Helper online"
+    : helperStatus.status === "degraded"
+      ? "Helper online, yt-dlp missing"
+      : "Helper offline";
   const selectedYouTubeAccount = selectedAccount ? getAccountById(selectedAccount) : null;
+  const canUploadToYouTube = Boolean(
+    selectedYouTubeAccount?.access_token &&
+      helperStatus.available &&
+      watch("source_url") &&
+      watch("title"),
+  );
+
+  const refreshHelperStatus = async () => {
+    setIsCheckingHelper(true);
+    const nextStatus = await getLocalHelperStatus();
+    setHelperStatus(nextStatus);
+    setIsCheckingHelper(false);
+  };
+
+  const copyHelperCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(HELPER_BOOT_COMMAND);
+      toast.success("Helper command copied");
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not copy helper command");
+    }
+  };
 
   const handleVideoMetadataFetch = async () => {
     const url = watch("source_url");
@@ -300,6 +335,40 @@ const NewPost = () => {
                       <p className="text-white/40 text-xs mt-1">
                         Vercel hosts the app. The localhost helper handles yt-dlp and the YouTube upload handoff from your own machine.
                       </p>
+                      {helperStatus.ytDlp?.version && (
+                        <p className="text-white/30 text-xs mt-1">yt-dlp version: {helperStatus.ytDlp.version}</p>
+                      )}
+                      {helperStatus.ytDlp && !helperStatus.ytDlp.available && (
+                        <p className="text-amber-200/80 text-xs mt-1">
+                          Helper is reachable, but yt-dlp is not installed or not on PATH yet.
+                        </p>
+                      )}
+                      {!helperStatus.available && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-white/55 text-xs">
+                            Run the helper locally, then come back here and refresh helper status.
+                          </p>
+                          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white/80 text-xs font-mono break-all">
+                            {HELPER_BOOT_COMMAND}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={copyHelperCommand}
+                              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
+                            >
+                              Copy command
+                            </button>
+                            <button
+                              type="button"
+                              onClick={refreshHelperStatus}
+                              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
+                            >
+                              {isCheckingHelper ? "Checking..." : "Refresh helper status"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -322,7 +391,10 @@ const NewPost = () => {
                       </button>
                     </div>
                     {metadataSource && (
-                      <p className="text-white/30 text-xs">Metadata source: {metadataSource}</p>
+                      <p className="text-white/30 text-xs">
+                        Metadata source: {metadataSource}
+                        {metadataSource !== "local-helper" && " . Upload still needs the localhost helper."}
+                      </p>
                     )}
                   </div>
 
@@ -449,7 +521,7 @@ const NewPost = () => {
                 </div>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (activeTab === "youtube" && !canUploadToYouTube)}
                   className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
                 >
                   {isSubmitting ? (
@@ -465,6 +537,11 @@ const NewPost = () => {
                   )}
                 </button>
               </div>
+              {activeTab === "youtube" && !helperStatus.available && (
+                <p className="text-amber-200/80 text-xs">
+                  Upload is paused until the local helper is online at `http://127.0.0.1:4315`.
+                </p>
+              )}
             </form>
           </GlassCard>
         </motion.div>
@@ -515,9 +592,13 @@ const NewPost = () => {
               <h3 className="text-lg font-medium text-white mb-4">YouTube Import Flow</h3>
               <div className="space-y-3 text-sm text-white/45">
                 <p>1. Connect the destination channel from the Accounts page.</p>
-                <p>2. Paste a source video URL and pull metadata.</p>
-                <p>3. Edit title, description, privacy, tags, and schedule.</p>
-                <p>4. The localhost helper downloads with yt-dlp and uploads to the selected channel.</p>
+                <p>2. Start the local helper on your machine.</p>
+                <p>3. Paste a source video URL and pull metadata.</p>
+                <p>4. Edit title, description, privacy, tags, and schedule.</p>
+                <p>5. The localhost helper downloads with yt-dlp and uploads to the selected channel.</p>
+              </div>
+              <div className="mt-5 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/75 font-mono break-all">
+                {HELPER_BOOT_COMMAND}
               </div>
               {youtubeAccounts.length === 0 && (
                 <a href="/accounts" className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5">

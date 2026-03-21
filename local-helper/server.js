@@ -67,6 +67,22 @@ async function fetchMetadata(url) {
   };
 }
 
+async function detectYtDlp() {
+  try {
+    const { stdout } = await runYtDlp(["--version"]);
+    return {
+      available: true,
+      version: stdout.trim() || "unknown",
+    };
+  } catch (error) {
+    return {
+      available: false,
+      version: null,
+      error: error.message || "yt-dlp is not available",
+    };
+  }
+}
+
 async function downloadVideo(url) {
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "occium-yt-"));
   const outputTemplate = path.join(tempDir, "%(id)s.%(ext)s");
@@ -162,11 +178,14 @@ async function uploadToYouTube({
   };
 }
 
-app.get("/health", (_request, response) => {
+app.get("/health", async (_request, response) => {
+  const ytDlp = await detectYtDlp();
+
   response.json({
-    status: "ok",
+    status: ytDlp.available ? "ok" : "degraded",
     service: "occium-local-helper",
     port,
+    ytDlp,
   });
 });
 
