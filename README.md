@@ -1,6 +1,6 @@
 # Occium Local
 
-This repo now runs as a Vercel-hosted frontend plus an optional localhost helper for the YouTube import pipeline.
+This repo now runs as a Vercel-hosted frontend plus an optional local Python helper for the YouTube import pipeline.
 
 ## Vercel deployment
 
@@ -30,9 +30,9 @@ For the existing popup-based browser flow, use these exact settings in Google Cl
 2. Update `frontend/.env` only if you want to override defaults locally
 3. `npm start`
 
-## Local helper run
+## Local Python helper run
 
-1. Install `yt-dlp` on your machine and make sure it is available on PATH
+1. Make sure Python 3 is available on your machine
 2. From the repo root, run `start-helper.bat`
 
 Quick start command:
@@ -41,22 +41,24 @@ Quick start command:
 
 Manual fallback:
 
-- `npm run install:helper`
-- `npm run start:helper`
+- `python -m pip install -r local-helper/requirements.txt`
+- `python local-helper/server.py`
 
-The helper listens on `http://127.0.0.1:4315` and is only used for:
+The helper listens on `http://127.0.0.1:4315` and is used for:
 
+- inspecting single-video, playlist, and channel links
 - pulling video metadata via `yt-dlp`
 - downloading a source YouTube video locally
 - uploading that video to the connected destination YouTube channel
 
-If the app says `Helper online, yt-dlp missing`, the local helper is running but `yt-dlp` still is not installed or not on your system PATH.
+The launcher creates a local virtual environment automatically and installs the Python dependencies, including `yt-dlp`.
 
 ## Flow
 
 1. Connect a YouTube channel from the Accounts page
-2. Paste a source YouTube video URL in Composer
-3. Fetch metadata
-4. Choose the connected destination channel
-5. Edit title, description, tags, privacy, and optional publish date
-6. Hand off the download and upload to the localhost helper
+2. Start the local Python helper
+3. Paste a single YouTube video, playlist, or channel URL in Composer
+4. Fetch the source and select the exact videos to publish
+5. Choose the connected destination channel
+6. Apply privacy, tags, and optional schedule timing or interval
+7. Hand off the download and upload to the Python helper

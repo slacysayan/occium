@@ -12,20 +12,59 @@ import {
   PenSquare,
 } from "lucide-react";
 import { format } from "date-fns";
-import { getAccounts, getPosts } from "../lib/localApp";
+import { fetchYouTubeChannelAnalytics, getAccounts, getPosts } from "../lib/localApp";
 
 const Dashboard = () => {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [youtubeAnalytics, setYouTubeAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
       return;
     }
 
-    setAccounts(getAccounts(user.id));
+    let isMounted = true;
+    const nextAccounts = getAccounts(user.id);
+    setAccounts(nextAccounts);
     setPosts(getPosts(user.id));
+
+    const connectedYouTubeAccount = nextAccounts.find(
+      (account) => account.platform === "youtube" && account.access_token,
+    );
+
+    if (!connectedYouTubeAccount) {
+      setYouTubeAnalytics(null);
+      setAnalyticsLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setAnalyticsLoading(true);
+    fetchYouTubeChannelAnalytics(connectedYouTubeAccount)
+      .then((analytics) => {
+        if (isMounted) {
+          setYouTubeAnalytics(analytics);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load YouTube analytics", error);
+        if (isMounted) {
+          setYouTubeAnalytics(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setAnalyticsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [user]);
 
   const stats = useMemo(() => {
@@ -174,6 +213,50 @@ const Dashboard = () => {
             </Link>
           </GlassCard>
 
+          <GlassCard delay={0.18}>
+            <div className="flex items-end justify-between gap-4 mb-6">
+              <div>
+                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Channel Snapshot</p>
+                <h2 className="text-2xl font-light text-white tracking-tight">YouTube performance</h2>
+              </div>
+            </div>
+
+            {analyticsLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-white/45 text-sm">
+                Loading connected channel analytics...
+              </div>
+            ) : youtubeAnalytics ? (
+              <div className="space-y-5">
+                <div className="flex items-center gap-4">
+                  {youtubeAnalytics.thumbnail ? (
+                    <img
+                      src={youtubeAnalytics.thumbnail}
+                      alt=""
+                      className="w-14 h-14 rounded-2xl object-cover border border-white/10"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10" />
+                  )}
+                  <div>
+                    <p className="text-white font-medium">{youtubeAnalytics.title}</p>
+                    <p className="text-white/35 text-sm mt-1">Live stats from the connected YouTube channel.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <AnalyticsStat label="Subscribers" value={formatCompactNumber(youtubeAnalytics.subscribers)} />
+                  <AnalyticsStat label="Views" value={formatCompactNumber(youtubeAnalytics.views)} />
+                  <AnalyticsStat label="Videos" value={formatCompactNumber(youtubeAnalytics.videos)} />
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center">
+                <p className="text-white/55">No live YouTube analytics yet.</p>
+                <p className="text-white/35 text-sm mt-2">Connect a YouTube channel to surface subscribers, views, and upload count here.</p>
+              </div>
+            )}
+          </GlassCard>
+
           <GlassCard delay={0.2}>
             <div className="flex items-end justify-between gap-4 mb-6">
               <div>
@@ -220,6 +303,19 @@ const Dashboard = () => {
     </div>
   );
 };
+
+const AnalyticsStat = ({ label, value }) => (
+  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">{label}</p>
+    <p className="text-white text-2xl font-light mt-3">{value}</p>
+  </div>
+);
+
+const formatCompactNumber = (value) =>
+  new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value || 0);
 
 const SummaryCard = ({ icon: Icon, label, value, detail }) => (
   <GlassCard className="p-6" delay={0.05}>

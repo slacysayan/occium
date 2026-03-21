@@ -25,6 +25,7 @@ import {
   getAccounts,
   getLocalHelperStatus,
   ghostwrite,
+  inspectYouTubeSource,
   uploadYouTubeImport,
 } from "../lib/localApp";
 
@@ -51,6 +52,16 @@ const NewPost = () => {
   const [helperStatus, setHelperStatus] = useState({ available: false, status: "checking" });
   const [metadataSource, setMetadataSource] = useState("");
   const [isCheckingHelper, setIsCheckingHelper] = useState(false);
+  const [collectionSource, setCollectionSource] = useState(null);
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState([]);
+  const [collectionFilter, setCollectionFilter] = useState("");
+  const [bulkIntervalMinutes, setBulkIntervalMinutes] = useState(60);
+  const [bulkProgress, setBulkProgress] = useState({
+    active: false,
+    completed: 0,
+    total: 0,
+    currentTitle: "",
+  });
 
   const { register, handleSubmit, setValue, watch, reset } = useForm({
     defaultValues,
@@ -115,11 +126,41 @@ const NewPost = () => {
       ? "Helper online, yt-dlp missing"
       : "Helper offline";
   const selectedYouTubeAccount = selectedAccount ? getAccountById(selectedAccount) : null;
+  const sourceUrl = watch("source_url");
+  const currentTitle = watch("title");
+  const currentPrivacyStatus = watch("privacy_status");
+  const currentTagsInput = watch("tags_input");
+  const filteredCollectionEntries = useMemo(() => {
+    if (!collectionSource) {
+      return [];
+    }
+
+    const query = collectionFilter.trim().toLowerCase();
+    if (!query) {
+      return collectionSource.entries;
+    }
+
+    return collectionSource.entries.filter((entry) =>
+      entry.title.toLowerCase().includes(query),
+    );
+  }, [collectionSource, collectionFilter]);
+  const selectedCollectionEntries = useMemo(() => {
+    if (!collectionSource) {
+      return [];
+    }
+
+    return collectionSource.entries.filter((entry) =>
+      selectedCollectionIds.includes(entry.id),
+    );
+  }, [collectionSource, selectedCollectionIds]);
   const canUploadToYouTube = Boolean(
     selectedYouTubeAccount?.access_token &&
       helperStatus.available &&
-      watch("source_url") &&
-      watch("title"),
+      (
+        collectionSource
+          ? selectedCollectionEntries.length > 0
+          : sourceUrl && currentTitle
+      ),
   );
 
   const refreshHelperStatus = async () => {
@@ -140,7 +181,7 @@ const NewPost = () => {
   };
 
   const handleVideoMetadataFetch = async () => {
-    const url = watch("source_url");
+    const url = sourceUrl;
     if (!url) {
       return toast.error("Please enter a YouTube URL");
     }
@@ -148,20 +189,41 @@ const NewPost = () => {
     const toastId = toast.loading("Fetching video details...");
 
     try {
-      const metadata = await fetchVideoMetadata(url);
+      const source = await inspectYouTubeSource(url);
+      setMetadataSource(source.metadata_source || "");
 
+      if (source.kind === "collection") {
+        const nextCollection = source.collection;
+        const firstEntry = nextCollection.entries[0] || null;
+
+        setCollectionSource(nextCollection);
+        setSelectedCollectionIds(nextCollection.entries.map((entry) => entry.id));
+        setCollectionFilter("");
+        setVideoPreview(firstEntry?.thumbnail || null);
+        setValue("title", "");
+        setValue("description", "");
+        setValue("thumbnail_url", firstEntry?.thumbnail || "");
+
+        toast.dismiss(toastId);
+        toast.success(`Loaded ${nextCollection.entry_count} videos`);
+        return;
+      }
+
+      const metadata = source.video;
+      setCollectionSource(null);
+      setSelectedCollectionIds([]);
+      setCollectionFilter("");
       setValue("title", metadata.title);
       setValue("description", metadata.description);
       setValue("thumbnail_url", metadata.thumbnail);
       setVideoPreview(metadata.thumbnail);
-      setMetadataSource(metadata.metadata_source || "");
 
       toast.dismiss(toastId);
       toast.success("Video imported!");
     } catch (error) {
       console.error(error);
       toast.dismiss(toastId);
-      toast.error("Failed to fetch metadata");
+      toast.error(error?.message || "Failed to fetch metadata");
     }
   };
 
@@ -170,6 +232,45 @@ const NewPost = () => {
     setVideoPreview(null);
     setScheduleDate(null);
     setMetadataSource("");
+    setCollectionSource(null);
+    setSelectedCollectionIds([]);
+    setCollectionFilter("");
+    setBulkProgress({
+      active: false,
+      completed: 0,
+      total: 0,
+      currentTitle: "",
+    });
+  };
+
+  const toggleCollectionItem = (entryId) => {
+    setSelectedCollectionIds((currentIds) =>
+      currentIds.includes(entryId)
+        ? currentIds.filter((id) => id !== entryId)
+        : [...currentIds, entryId],
+    );
+  };
+
+  const selectVisibleCollectionItems = () => {
+    setSelectedCollectionIds((currentIds) => {
+      const mergedIds = new Set(currentIds);
+      filteredCollectionEntries.forEach((entry) => mergedIds.add(entry.id));
+      return [...mergedIds];
+    });
+  };
+
+  const clearCollectionSelection = () => {
+    setSelectedCollectionIds([]);
+  };
+
+  const buildScheduledPublishAt = (index) => {
+    if (!scheduleDate) {
+      return null;
+    }
+
+    const nextDate = new Date(scheduleDate);
+    nextDate.setMinutes(nextDate.getMinutes() + index * bulkIntervalMinutes);
+    return nextDate.toISOString();
   };
 
   const onSubmit = async (data) => {
@@ -187,6 +288,107 @@ const NewPost = () => {
 
         if (!account?.access_token) {
           throw new Error("Reconnect the YouTube channel before uploading.");
+        }
+
+        if (collectionSource) {
+          if (selectedCollectionEntries.length === 0) {
+            throw new Error("Select at least one video from the playlist or channel.");
+          }
+
+          let uploadedCount = 0;
+          const failures = [];
+
+          setBulkProgress({
+            active: true,
+            completed: 0,
+            total: selectedCollectionEntries.length,
+            currentTitle: "",
+          });
+
+          for (const [index, entry] of selectedCollectionEntries.entries()) {
+            setBulkProgress({
+              active: true,
+              completed: index,
+              total: selectedCollectionEntries.length,
+              currentTitle: entry.title,
+            });
+
+            try {
+              const entryMetadata = await fetchVideoMetadata(entry.source_url);
+              const publishAt = buildScheduledPublishAt(index);
+              const uploadResult = await uploadYouTubeImport({
+                account,
+                sourceUrl: entry.source_url,
+                title: entryMetadata.title || entry.title,
+                description:
+                  entryMetadata.description ||
+                  `Imported from YouTube.\n\nSource: ${entry.source_url}`,
+                tags: currentTagsInput,
+                privacyStatus: currentPrivacyStatus || "private",
+                publishAt,
+              });
+
+              createPost({
+                user_id: user.id,
+                account_id: selectedAccount,
+                platform: "youtube",
+                content_type: "video",
+                title: entryMetadata.title || entry.title,
+                description:
+                  entryMetadata.description ||
+                  `Imported from YouTube.\n\nSource: ${entry.source_url}`,
+                tags: currentTagsInput,
+                source_url: entry.source_url,
+                thumbnail_url: entryMetadata.thumbnail || entry.thumbnail,
+                privacy_status: uploadResult.privacyStatus,
+                scheduled_at: publishAt,
+                status: publishAt ? "scheduled" : "published",
+                platform_post_id: uploadResult.videoId,
+                platform_post_url: uploadResult.videoUrl,
+                upload_mode: "python-helper",
+                helper_status: "uploaded",
+              });
+
+              uploadedCount += 1;
+            } catch (error) {
+              console.error(error);
+              failures.push({
+                title: entry.title,
+                message: error?.message || "Upload failed",
+              });
+            } finally {
+              setBulkProgress({
+                active: true,
+                completed: index + 1,
+                total: selectedCollectionEntries.length,
+                currentTitle: entry.title,
+              });
+            }
+          }
+
+          setBulkProgress({
+            active: false,
+            completed: selectedCollectionEntries.length,
+            total: selectedCollectionEntries.length,
+            currentTitle: "",
+          });
+
+          if (uploadedCount === 0 && failures.length > 0) {
+            throw new Error(failures[0].message);
+          }
+
+          if (failures.length > 0) {
+            toast.error(`${failures.length} videos failed. ${uploadedCount} uploaded successfully.`);
+          } else {
+            toast.success(
+              scheduleDate
+                ? `${uploadedCount} videos scheduled on YouTube!`
+                : `${uploadedCount} videos uploaded to YouTube!`,
+            );
+          }
+
+          resetFormState();
+          return;
         }
 
         const uploadResult = await uploadYouTubeImport({
@@ -214,7 +416,7 @@ const NewPost = () => {
           status: publishAt ? "scheduled" : "published",
           platform_post_id: uploadResult.videoId,
           platform_post_url: uploadResult.videoUrl,
-          upload_mode: "local-helper",
+          upload_mode: "python-helper",
           helper_status: "uploaded",
         });
 
@@ -239,6 +441,10 @@ const NewPost = () => {
       toast.error(error?.message || "Failed to create post");
     } finally {
       setIsSubmitting(false);
+      setBulkProgress((currentState) => ({
+        ...currentState,
+        active: false,
+      }));
     }
   };
 
@@ -333,7 +539,7 @@ const NewPost = () => {
                     <div>
                       <p className="text-white text-sm font-medium">{helperLabel}</p>
                       <p className="text-white/40 text-xs mt-1">
-                        Vercel hosts the app. The localhost helper handles yt-dlp and the YouTube upload handoff from your own machine.
+                        Vercel hosts the app. The local Python helper handles source inspection, yt-dlp downloads, and the YouTube upload handoff from your own machine.
                       </p>
                       {helperStatus.ytDlp?.version && (
                         <p className="text-white/30 text-xs mt-1">yt-dlp version: {helperStatus.ytDlp.version}</p>
@@ -380,7 +586,7 @@ const NewPost = () => {
                       <input
                         {...register("source_url")}
                         className="w-full glass-input rounded-lg px-4 py-3 font-mono text-sm"
-                        placeholder="Paste YouTube Video Link..."
+                        placeholder="Paste a YouTube video, playlist, or channel link..."
                       />
                       <button
                         type="button"
@@ -393,7 +599,7 @@ const NewPost = () => {
                     {metadataSource && (
                       <p className="text-white/30 text-xs">
                         Metadata source: {metadataSource}
-                        {metadataSource !== "local-helper" && " . Upload still needs the localhost helper."}
+                        {metadataSource !== "python-helper" && " . Upload still needs the local Python helper."}
                       </p>
                     )}
                   </div>
@@ -407,66 +613,199 @@ const NewPost = () => {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Title</label>
-                      <input
-                        {...register("title")}
-                        className="w-full glass-input rounded-lg px-4 py-3 text-lg font-medium"
-                        placeholder="Video Title"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
-                      <select
-                        {...register("privacy_status")}
-                        className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
-                      >
-                        <option value="private" className="text-black">
-                          Private
-                        </option>
-                        <option value="unlisted" className="text-black">
-                          Unlisted
-                        </option>
-                        <option value="public" className="text-black">
-                          Public
-                        </option>
-                      </select>
-                    </div>
-                  </div>
+                  {collectionSource ? (
+                    <div className="space-y-5">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-white text-sm font-medium">{collectionSource.title}</p>
+                            <p className="text-white/40 text-xs mt-1">
+                              {collectionSource.entry_count} videos ready from {collectionSource.source_type}.
+                              {collectionSource.has_more && " Showing the first batch for faster selection."}
+                            </p>
+                          </div>
+                          <div className="text-white/50 text-xs uppercase tracking-[0.2em]">
+                            {selectedCollectionEntries.length} selected
+                          </div>
+                        </div>
 
-                  <div className="space-y-2 flex-1">
-                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex justify-between items-center">
-                      Description
-                      <button
-                        type="button"
-                        onClick={handleGhostwrite}
-                        className="text-xs flex items-center gap-1 text-occium-gold hover:text-white transition-colors"
-                      >
-                        {isGenerating ? (
-                          <Loader2 className="animate-spin" size={12} />
-                        ) : (
-                          <Wand2 size={12} />
-                        )}{" "}
-                        AI Enhance
-                      </button>
-                    </label>
-                    <textarea
-                      {...register("description")}
-                      rows={6}
-                      className="w-full glass-input rounded-lg px-4 py-3 leading-relaxed"
-                      placeholder="Video description..."
-                    />
-                  </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr,160px] gap-3 mt-4">
+                          <input
+                            value={collectionFilter}
+                            onChange={(event) => setCollectionFilter(event.target.value)}
+                            className="w-full glass-input rounded-lg px-4 py-3 text-sm"
+                            placeholder="Filter imported videos..."
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            value={bulkIntervalMinutes}
+                            onChange={(event) =>
+                              setBulkIntervalMinutes(Math.max(1, Number.parseInt(event.target.value || "1", 10)))
+                            }
+                            className="w-full glass-input rounded-lg px-4 py-3 text-sm"
+                            placeholder="Gap (mins)"
+                          />
+                        </div>
 
-                  <div className="space-y-2">
-                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags</label>
-                    <input
-                      {...register("tags_input")}
-                      className="w-full glass-input rounded-lg px-4 py-3"
-                      placeholder="marketing, ai, growth"
-                    />
-                  </div>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <button
+                            type="button"
+                            onClick={selectVisibleCollectionItems}
+                            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
+                          >
+                            Select visible
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearCollectionSelection}
+                            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
+                          >
+                            Clear selection
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
+                        {filteredCollectionEntries.map((entry) => {
+                          const isSelected = selectedCollectionIds.includes(entry.id);
+
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              onClick={() => toggleCollectionItem(entry.id)}
+                              className={`w-full text-left rounded-2xl border p-3 transition-colors ${
+                                isSelected ? "border-occium-gold/40 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className={`w-5 h-5 rounded-md border flex-shrink-0 ${
+                                    isSelected ? "bg-occium-gold border-occium-gold" : "border-white/20"
+                                  }`}
+                                />
+                                {entry.thumbnail ? (
+                                  <img
+                                    src={entry.thumbnail}
+                                    alt=""
+                                    className="w-24 h-14 object-cover rounded-lg border border-white/10"
+                                  />
+                                ) : (
+                                  <div className="w-24 h-14 rounded-lg border border-white/10 bg-white/5" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-white text-sm font-medium line-clamp-2">{entry.title}</p>
+                                  <div className="flex flex-wrap items-center gap-3 text-white/35 text-xs mt-2">
+                                    <span>#{entry.position}</span>
+                                    <span>{entry.uploader}</span>
+                                    <span>{formatVideoDuration(entry.duration)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                        <p className="text-white/60 text-xs uppercase tracking-[0.2em] mb-2">Bulk Apply</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
+                            <select
+                              {...register("privacy_status")}
+                              className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
+                            >
+                              <option value="private" className="text-black">
+                                Private
+                              </option>
+                              <option value="unlisted" className="text-black">
+                                Unlisted
+                              </option>
+                              <option value="public" className="text-black">
+                                Public
+                              </option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags Applied To All</label>
+                            <input
+                              {...register("tags_input")}
+                              className="w-full glass-input rounded-lg px-4 py-3"
+                              placeholder="marketing, ai, growth"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-white/35 text-xs mt-3">
+                          Selected videos keep their own titles and descriptions. Privacy, tags, and the schedule interval apply across the batch.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Title</label>
+                          <input
+                            {...register("title")}
+                            className="w-full glass-input rounded-lg px-4 py-3 text-lg font-medium"
+                            placeholder="Video Title"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
+                          <select
+                            {...register("privacy_status")}
+                            className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
+                          >
+                            <option value="private" className="text-black">
+                              Private
+                            </option>
+                            <option value="unlisted" className="text-black">
+                              Unlisted
+                            </option>
+                            <option value="public" className="text-black">
+                              Public
+                            </option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 flex-1">
+                        <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex justify-between items-center">
+                          Description
+                          <button
+                            type="button"
+                            onClick={handleGhostwrite}
+                            className="text-xs flex items-center gap-1 text-occium-gold hover:text-white transition-colors"
+                          >
+                            {isGenerating ? (
+                              <Loader2 className="animate-spin" size={12} />
+                            ) : (
+                              <Wand2 size={12} />
+                            )}{" "}
+                            AI Enhance
+                          </button>
+                        </label>
+                        <textarea
+                          {...register("description")}
+                          rows={6}
+                          className="w-full glass-input rounded-lg px-4 py-3 leading-relaxed"
+                          placeholder="Video description..."
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags</label>
+                        <input
+                          {...register("tags_input")}
+                          className="w-full glass-input rounded-lg px-4 py-3"
+                          placeholder="marketing, ai, growth"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {selectedYouTubeAccount?.token_expires_at && (
                     <p className="text-white/30 text-xs">
@@ -529,17 +868,40 @@ const NewPost = () => {
                       <Loader2 size={16} className="animate-spin" /> Working...
                     </span>
                   ) : scheduleDate ? (
-                    "Schedule Post"
+                    collectionSource ? `Schedule ${selectedCollectionEntries.length || 0} Videos` : "Schedule Post"
                   ) : activeTab === "youtube" ? (
-                    "Upload to YouTube"
+                    collectionSource ? `Upload ${selectedCollectionEntries.length || 0} Videos` : "Upload to YouTube"
                   ) : (
                     "Post Now"
                   )}
                 </button>
               </div>
+              {activeTab === "youtube" && bulkProgress.active && (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 text-xs text-white/55">
+                    <span>Bulk upload progress</span>
+                    <span>
+                      {bulkProgress.completed}/{bulkProgress.total}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/5 overflow-hidden mt-3">
+                    <div
+                      className="h-full bg-occium-gold transition-all duration-300"
+                      style={{
+                        width: `${bulkProgress.total ? (bulkProgress.completed / bulkProgress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  {bulkProgress.currentTitle && (
+                    <p className="text-white/40 text-xs mt-3 line-clamp-1">
+                      Processing: {bulkProgress.currentTitle}
+                    </p>
+                  )}
+                </div>
+              )}
               {activeTab === "youtube" && !helperStatus.available && (
                 <p className="text-amber-200/80 text-xs">
-                  Upload is paused until the local helper is online at `http://127.0.0.1:4315`.
+                  Upload is paused until the local Python helper is online at `http://127.0.0.1:4315`.
                 </p>
               )}
             </form>
@@ -592,10 +954,11 @@ const NewPost = () => {
               <h3 className="text-lg font-medium text-white mb-4">YouTube Import Flow</h3>
               <div className="space-y-3 text-sm text-white/45">
                 <p>1. Connect the destination channel from the Accounts page.</p>
-                <p>2. Start the local helper on your machine.</p>
-                <p>3. Paste a source video URL and pull metadata.</p>
-                <p>4. Edit title, description, privacy, tags, and schedule.</p>
-                <p>5. The localhost helper downloads with yt-dlp and uploads to the selected channel.</p>
+                <p>2. Start the Python helper on your machine.</p>
+                <p>3. Paste a single video, playlist, or channel URL.</p>
+                <p>4. Pick the exact videos you want to publish.</p>
+                <p>5. Apply privacy, tags, and an optional schedule interval.</p>
+                <p>6. The helper downloads and uploads each selected video to the connected channel.</p>
               </div>
               <div className="mt-5 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/75 font-mono break-all">
                 {HELPER_BOOT_COMMAND}
@@ -630,5 +993,26 @@ const TabButton = ({ active, onClick, icon: Icon, label, color }) => (
     )}
   </button>
 );
+
+const formatVideoDuration = (seconds) => {
+  if (!seconds || Number.isNaN(seconds)) {
+    return "Duration n/a";
+  }
+
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return [hours, minutes, remainingSeconds]
+      .map((value) => String(value).padStart(2, "0"))
+      .join(":");
+  }
+
+  return [minutes, remainingSeconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+};
 
 export default NewPost;

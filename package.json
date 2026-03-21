@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "install:frontend": "npm install --prefix frontend",
-    "install:helper": "npm install --prefix local-helper",
+    "install:helper": "python -m pip install -r local-helper/requirements.txt",
     "start": "npm start --prefix frontend",
-    "start:helper": "npm start --prefix local-helper",
+    "start:helper": "python local-helper/server.py",
     "build": "npm run build --prefix frontend"
   }
 }

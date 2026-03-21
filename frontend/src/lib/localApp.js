@@ -195,6 +195,23 @@ function extractYouTubeVideoId(url) {
   return null;
 }
 
+function looksLikeCollectionUrl(url) {
+  try {
+    const parsedUrl = new URL(url);
+    return Boolean(
+      parsedUrl.searchParams.get("list") ||
+        parsedUrl.pathname.includes("/playlist") ||
+        parsedUrl.pathname.includes("/channel/") ||
+        parsedUrl.pathname.includes("/user/") ||
+        parsedUrl.pathname.includes("/c/") ||
+        parsedUrl.pathname.startsWith("/@"),
+    );
+  } catch (error) {
+    console.error("Invalid YouTube URL", error);
+    return false;
+  }
+}
+
 function buildGhostwriteCopy(prompt, platform, tone) {
   const config = toneMap[tone] || toneMap.professional;
   const platformLabel = platform === "youtube" ? "YouTube" : "LinkedIn";
@@ -525,7 +542,7 @@ export async function fetchVideoMetadata(url) {
 
       return {
         ...response,
-        metadata_source: "local-helper",
+        metadata_source: "python-helper",
       };
     } catch (error) {
       console.error("Local helper metadata lookup failed", error);
@@ -570,6 +587,68 @@ export async function fetchVideoMetadata(url) {
       metadata_source: "fallback",
     };
   }
+}
+
+export async function inspectYouTubeSource(url, maxItems = 80) {
+  const helperStatus = await getLocalHelperStatus();
+
+  if (helperStatus.available) {
+    const response = await fetchHelper("/api/youtube/source", {
+      method: "post",
+      data: {
+        url,
+        max_items: maxItems,
+      },
+      timeout: 30000,
+    });
+
+    return response;
+  }
+
+  if (looksLikeCollectionUrl(url)) {
+    throw new Error(`Start the local helper at ${appEnv.localHelperUrl} to inspect playlists and channels.`);
+  }
+
+  const video = await fetchVideoMetadata(url);
+  return {
+    kind: "video",
+    metadata_source: video.metadata_source,
+    video,
+  };
+}
+
+export async function fetchYouTubeChannelAnalytics(account) {
+  if (!account?.channel_id || !account?.access_token) {
+    return null;
+  }
+
+  const response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+    headers: {
+      Authorization: `Bearer ${account.access_token}`,
+    },
+    params: {
+      part: "snippet,statistics",
+      id: account.channel_id,
+    },
+    timeout: 5000,
+  });
+
+  const item = response.data?.items?.[0];
+  if (!item) {
+    return null;
+  }
+
+  return {
+    title: item.snippet?.title || account.account_name,
+    thumbnail:
+      item.snippet?.thumbnails?.high?.url ||
+      item.snippet?.thumbnails?.default?.url ||
+      account.profile_picture ||
+      null,
+    subscribers: Number(item.statistics?.subscriberCount || 0),
+    views: Number(item.statistics?.viewCount || 0),
+    videos: Number(item.statistics?.videoCount || 0),
+  };
 }
 
 export async function uploadYouTubeImport({

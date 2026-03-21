@@ -5,7 +5,6 @@ import { cn } from '../../lib/utils';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 
-const OCCIUM_LOGO_SRC = "/branding/occium-logo.webp";
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
 
 const Sidebar = () => {
@@ -37,14 +36,16 @@ const Sidebar = () => {
         >
           <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain" />
         </motion.div>
-        <motion.img 
+        <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
-          src={OCCIUM_LOGO_SRC}
-          alt="Occium"
-          className="hidden md:block h-10 w-auto object-contain"
-        />
+          className="hidden md:flex items-center"
+        >
+          <span className="text-[2.05rem] font-semibold tracking-[-0.055em] leading-none text-white">
+            Occium
+          </span>
+        </motion.div>
       </div>
 
       <nav className="flex-1 px-4 py-8 space-y-2">
