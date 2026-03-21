@@ -1,0 +1,112 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="skyGradient" x1="800" y1="0" x2="800" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F7D93" />
+      <stop offset="0.62" stop-color="#4B7589" />
+      <stop offset="1" stop-color="#364F60" />
+    </linearGradient>
+    <radialGradient id="moonBase" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(928 315) rotate(38.4) scale(370.669)">
+      <stop offset="0.08" stop-color="#F2E7D2" />
+      <stop offset="0.34" stop-color="#DED4C1" />
+      <stop offset="0.63" stop-color="#A7B6BD" />
+      <stop offset="0.88" stop-color="#6D8694" />
+      <stop offset="1" stop-color="#587484" />
+    </radialGradient>
+    <linearGradient id="moonShadow" x1="1077.5" y1="47" x2="1077.5" y2="727" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3D6173" stop-opacity="0" />
+      <stop offset="0.35" stop-color="#3D6173" stop-opacity="0.08" />
+      <stop offset="1" stop-color="#2E5165" stop-opacity="0.76" />
+    </linearGradient>
+    <linearGradient id="fieldGradient" x1="800" y1="690" x2="800" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9D8A57" />
+      <stop offset="0.22" stop-color="#7A6A43" />
+      <stop offset="0.62" stop-color="#3F382A" />
+      <stop offset="1" stop-color="#1B1A17" />
+    </linearGradient>
+    <linearGradient id="grassGradient" x1="0" y1="900" x2="0" y2="714" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#191714" />
+      <stop offset="0.48" stop-color="#544A35" />
+      <stop offset="1" stop-color="#B39D60" stop-opacity="0.18" />
+    </linearGradient>
+    <linearGradient id="wreckGradient" x1="203" y1="589" x2="329" y2="787" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#987753" />
+      <stop offset="0.42" stop-color="#5E442D" />
+      <stop offset="1" stop-color="#1C1E23" />
+    </linearGradient>
+    <clipPath id="moonClip">
+      <circle cx="1025" cy="387" r="340" />
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#skyGradient)" />
+
+  <g opacity="0.45" fill="#DCE7ED">
+    <circle cx="60" cy="291" r="1.1" />
+    <circle cx="180" cy="180" r="1.2" />
+    <circle cx="258" cy="340" r="1" />
+    <circle cx="425" cy="210" r="1.15" />
+    <circle cx="564" cy="124" r="1.2" />
+    <circle cx="670" cy="170" r="1.1" />
+    <circle cx="741" cy="116" r="0.95" />
+    <circle cx="815" cy="164" r="1.1" />
+    <circle cx="912" cy="94" r="1.1" />
+    <circle cx="1024" cy="146" r="1.2" />
+    <circle cx="1186" cy="94" r="1.15" />
+    <circle cx="1342" cy="184" r="1.1" />
+    <circle cx="1485" cy="108" r="1.2" />
+  </g>
+
+  <g opacity="0.4">
+    <path d="M0 673C141 651 220 649 351 654C462 658 551 670 678 675C798 680 917 678 1046 675C1177 672 1316 664 1469 675C1522 679 1565 681 1600 685V730H0V673Z" fill="#C7B88A" />
+  </g>
+
+  <circle cx="1025" cy="387" r="340" fill="url(#moonBase)" />
+
+  <g clip-path="url(#moonClip)">
+    <path d="M845 67C727 147 716 219 771 266C822 309 824 364 803 399C776 444 790 502 862 548C934 594 955 654 916 727H633V47L845 67Z" fill="#EFE4D1" opacity="0.86" />
+    <path d="M887 132C830 170 811 218 835 253C857 286 853 319 826 350C797 384 802 433 843 465C883 496 904 540 888 600C931 535 969 510 1004 524C1045 540 1074 531 1100 492C1128 450 1172 431 1230 432C1288 433 1331 408 1358 356C1383 306 1380 242 1351 166C1315 71 1201 47 1046 47C992 47 943 76 887 132Z" fill="#F4EADB" opacity="0.92" />
+    <path d="M925 211C962 219 981 247 981 289C981 325 1003 350 1045 362C1091 376 1124 407 1142 454C1156 492 1188 517 1239 530C1288 544 1323 577 1347 631C1368 680 1419 718 1498 744V806H1095L925 211Z" fill="#6B8796" opacity="0.42" />
+    <path d="M1105 43C1252 54 1366 104 1445 194C1497 252 1538 333 1566 438L1527 751L1228 773C1311 691 1344 621 1325 563C1301 492 1251 451 1176 442C1113 434 1064 398 1028 335C995 278 954 256 904 269C850 283 807 272 776 237C744 200 759 143 821 64L1105 43Z" fill="#3D6173" opacity="0.7" />
+    <path d="M856 504C917 468 962 465 995 495C1030 529 1069 539 1114 523C1160 507 1199 521 1231 565C1262 605 1307 625 1367 625C1427 625 1470 650 1494 700C1513 741 1533 777 1553 806H835C816 686 823 585 856 504Z" fill="#D9D0BE" opacity="0.22" />
+    <ellipse cx="876" cy="315" rx="77" ry="86" fill="#6E8A98" opacity="0.52" />
+    <ellipse cx="874" cy="315" rx="50" ry="57" fill="#496A79" opacity="0.42" />
+    <ellipse cx="1360" cy="332" rx="42" ry="48" fill="#3B5D6E" opacity="0.36" />
+    <ellipse cx="1412" cy="229" rx="24" ry="18" fill="#7C97A3" opacity="0.25" />
+    <path d="M853 393C899 361 944 371 990 421C950 409 913 421 880 455C853 485 825 493 798 478C820 443 838 415 853 393Z" fill="#5A7A89" opacity="0.4" />
+    <rect x="685" y="47" width="680" height="680" fill="url(#moonShadow)" />
+  </g>
+
+  <path d="M0 700C152 686 286 688 406 697C555 708 688 720 809 717C949 714 1063 694 1185 697C1368 701 1502 716 1600 739V900H0V700Z" fill="url(#fieldGradient)" />
+
+  <g opacity="0.88">
+    <path d="M0 900C50 742 93 719 126 738C143 747 156 777 165 829C171 765 184 723 204 706C219 693 236 707 252 746C261 698 278 673 305 669C330 666 351 704 367 780C372 724 389 688 419 673C450 659 475 685 492 752C500 709 518 676 546 654C571 635 594 661 610 732C618 692 637 663 668 646C700 628 727 654 744 723C752 679 772 650 804 636C836 622 866 649 883 718C891 679 910 650 940 632C969 615 997 636 1018 695C1023 650 1039 624 1065 614C1093 603 1118 627 1137 687C1146 652 1167 626 1200 610C1231 595 1259 618 1280 679C1288 638 1308 610 1340 594C1373 578 1403 601 1424 664C1431 625 1450 603 1481 596C1518 589 1558 625 1600 706V900H0Z" fill="url(#grassGradient)" />
+  </g>
+
+  <g opacity="0.72" fill="#D8C48B">
+    <rect x="0" y="690" width="1600" height="4" />
+  </g>
+
+  <g>
+    <path d="M214 610L307 603L350 639L306 659L228 656L214 610Z" fill="#0F1319" />
+    <path d="M215 609L309 602L315 642L239 651L215 609Z" fill="url(#wreckGradient)" />
+    <path d="M232 651L308 645L330 742L240 744L232 651Z" fill="#26353D" />
+    <path d="M265 642L391 627L336 692L266 688L265 642Z" fill="#4A3727" />
+    <path d="M391 627L467 648L348 711L336 692L391 627Z" fill="#725642" />
+    <path d="M292 627C291 597 300 574 319 558C345 537 377 543 411 578C436 604 441 629 425 650L381 652C391 634 388 617 372 600C354 582 341 580 331 593C323 604 321 617 325 632L292 627Z" fill="#182128" />
+    <ellipse cx="249" cy="719" rx="24" ry="24" fill="#1A2128" />
+    <ellipse cx="317" cy="721" rx="26" ry="26" fill="#1A2128" />
+    <path d="M230 614L333 607L328 598L236 605L230 614Z" fill="#A17A53" opacity="0.78" />
+    <path d="M436 579C446 535 465 504 493 484C507 474 516 478 520 497C522 506 520 520 514 539L507 566L495 566L500 541C503 527 502 519 498 516C492 513 485 519 477 532C463 554 452 584 444 622L436 579Z" fill="#12191F" />
+    <path d="M513 484C547 465 573 459 592 468C608 476 618 498 620 535C591 524 563 520 534 523L513 484Z" fill="#5E2330" />
+    <path d="M514 486C548 468 575 463 594 472" stroke="#A64058" stroke-width="5" stroke-linecap="round" />
+    <path d="M504 562C507 552 511 549 517 552C524 556 526 565 523 579L518 638L503 638L504 562Z" fill="#10161D" />
+    <circle cx="456" cy="594" r="10" fill="#C8454F" />
+    <path d="M453 607L444 644L462 644L459 607H453Z" fill="#0F151B" />
+    <path d="M440 622L427 664L438 664L448 632L440 622Z" fill="#0F151B" />
+    <path d="M465 621L477 664L467 664L457 632L465 621Z" fill="#0F151B" />
+  </g>
+
+  <g opacity="0.24">
+    <ellipse cx="337" cy="728" rx="178" ry="37" fill="#071018" />
+  </g>
+</svg>

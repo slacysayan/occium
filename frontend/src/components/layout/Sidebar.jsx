@@ -26,7 +26,7 @@ const Sidebar = () => {
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      className="w-20 md:w-72 flex-shrink-0 flex flex-col h-screen fixed left-0 top-0 z-50 bg-black/40 backdrop-blur-2xl border-r border-white/5"
+      className="glass-shell w-20 md:w-72 flex-shrink-0 flex flex-col h-screen fixed left-0 top-0 z-50"
     >
       <div className="p-8 flex items-center gap-4">
         <motion.div 

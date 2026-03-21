@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { AuthWrapper, useAuth } from "./context/AuthContext";
+import AppBackdrop from "./components/layout/AppBackdrop";
 import Sidebar from "./components/layout/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
@@ -22,7 +23,8 @@ const AppLayout = () => {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="relative flex min-h-screen">
+      <AppBackdrop />
       <Sidebar />
       <main className="flex-1 md:ml-64 p-6 md:p-12 overflow-y-auto min-h-screen relative z-10">
         <div className="max-w-7xl mx-auto pb-20">
