@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Key, Save, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
+const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
+
 const Settings = () => {
     const { user } = useAuth();
     const [keys, setKeys] = useState({
@@ -89,7 +91,9 @@ const Settings = () => {
                              {user?.profile_picture ? (
                                  <img src={user.profile_picture} alt="Profile" />
                              ) : (
-                                 <div className="w-full h-full bg-white/10 flex items-center justify-center text-white font-bold">{user?.name?.[0]}</div>
+                                 <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                                     <img src={OCCIUM_MARK_SRC} alt="" className="w-7 h-7 object-contain opacity-90" />
+                                 </div>
                              )}
                          </div>
                          <div>

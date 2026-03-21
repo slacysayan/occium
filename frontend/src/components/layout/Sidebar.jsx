@@ -5,6 +5,9 @@ import { cn } from '../../lib/utils';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 
+const OCCIUM_LOGO_SRC = "/branding/occium-logo.webp";
+const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
+
 const Sidebar = () => {
   const { logout } = useAuth();
   const location = useLocation();
@@ -32,19 +35,16 @@ const Sidebar = () => {
           transition={{ duration: 1, delay: 0.2 }}
           className="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-white/10 to-transparent rounded-xl border border-white/10 shadow-2xl shadow-occium-gold/5"
         >
-             <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M24 4C12.9543 4 4 12.9543 4 24C4 35.0457 12.9543 44 24 44C35.0457 44 44 35.0457 44 24" stroke="white" strokeWidth="4" strokeLinecap="round"/>
-                <path d="M24 14V34" stroke="#D4AF37" strokeWidth="4" strokeLinecap="round"/>
-            </svg>
+          <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain" />
         </motion.div>
-        <motion.span 
+        <motion.img 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
-          className="text-2xl font-bold text-white hidden md:block tracking-tighter font-sans"
-        >
-          Occium
-        </motion.span>
+          src={OCCIUM_LOGO_SRC}
+          alt="Occium"
+          className="hidden md:block h-10 w-auto object-contain"
+        />
       </div>
 
       <nav className="flex-1 px-4 py-8 space-y-2">

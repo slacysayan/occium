@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import { AuthWrapper, useAuth } from "./context/AuthContext";
 import Sidebar from "./components/layout/Sidebar";
 import Dashboard from "./pages/Dashboard";
@@ -35,19 +36,22 @@ const AppLayout = () => {
 
 const App = () => (
   <AuthWrapper>
-    <Router>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/new" element={<NewPost />} />
-          <Route path="/queue" element={<Queue />} />
-          <Route path="/ai-studio" element={<AIStudio />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </Router>
+    <>
+      <Router>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/accounts" element={<Accounts />} />
+            <Route path="/new" element={<NewPost />} />
+            <Route path="/queue" element={<Queue />} />
+            <Route path="/ai-studio" element={<AIStudio />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Router>
+      <Analytics />
+    </>
   </AuthWrapper>
 );
 

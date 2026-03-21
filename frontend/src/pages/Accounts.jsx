@@ -5,6 +5,8 @@ import { Check, Plus, Trash2, Youtube, Linkedin, Loader2, AlertCircle } from "lu
 import { toast } from "sonner";
 import { deleteAccount, getAccounts } from "../lib/localApp";
 
+const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
+
 const Accounts = () => {
   const { user, connectYouTubeAccount, connectLinkedInAccount } = useAuth();
   const [accounts, setAccounts] = useState([]);
@@ -108,8 +110,8 @@ const Accounts = () => {
                         className="w-10 h-10 rounded-full border border-white/10"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold">
-                        {account.account_name[0]}
+                      <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center">
+                        <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain opacity-90" />
                       </div>
                     )}
                     <div>
@@ -181,8 +183,8 @@ const Accounts = () => {
                         className="w-10 h-10 rounded-full border border-white/10"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold">
-                        {account.account_name[0]}
+                      <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center">
+                        <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain opacity-90" />
                       </div>
                     )}
                     <div>
