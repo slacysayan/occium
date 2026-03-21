@@ -10,8 +10,6 @@ import axios from "axios";
 import { toast } from "sonner";
 import { appEnv } from "../config/env";
 import {
-  connectLinkedInAccount,
-  connectMockYouTubeAccount,
   connectYouTubeAccountFromGoogle,
   ensureLocalSession,
   resetLocalUser,
@@ -44,9 +42,7 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
   };
 
   const connectLocalLinkedInAccount = async () => {
-    const account = connectLinkedInAccount();
-    refreshSession();
-    return account;
+    throw new Error("LinkedIn live connect is not wired yet. We are finishing YouTube first.");
   };
 
   const loginAsDemo = () => {
@@ -81,13 +77,9 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
 
 const LocalAuthProvider = ({ children }) => {
   const connectYouTubeImpl = async () => {
-    const account = connectMockYouTubeAccount();
-
-    if (!appEnv.googleClientId) {
-      toast.info("Set REACT_APP_GOOGLE_CLIENT_ID in .env to use live Google connect.");
-    }
-
-    return { account };
+    throw new Error(
+      "Google YouTube connect is not configured on this deployment. Add REACT_APP_GOOGLE_CLIENT_ID in Vercel and redeploy.",
+    );
   };
 
   return (
