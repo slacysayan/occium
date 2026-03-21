@@ -57,6 +57,7 @@
   }
   html {
     background-color: #476f84;
+    scroll-behavior: smooth;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;

@@ -4,6 +4,7 @@ import { LayoutDashboard, Link2, PenSquare, Calendar, Sparkles, Settings, LogOut
 import { cn } from '../../lib/utils';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
+import { workspaceRoutes } from '../../lib/routes';
 
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
 
@@ -12,12 +13,12 @@ const Sidebar = () => {
   const location = useLocation();
 
   const links = [
-    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Accounts', path: '/accounts', icon: Link2 },
-    { name: 'New Post', path: '/new', icon: PenSquare },
-    { name: 'Queue', path: '/queue', icon: Calendar },
-    { name: 'AI Studio', path: '/ai-studio', icon: Sparkles },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Dashboard', path: workspaceRoutes.dashboard, icon: LayoutDashboard },
+    { name: 'Accounts', path: workspaceRoutes.accounts, icon: Link2 },
+    { name: 'New Post', path: workspaceRoutes.newPost, icon: PenSquare },
+    { name: 'Queue', path: workspaceRoutes.queue, icon: Calendar },
+    { name: 'AI Studio', path: workspaceRoutes.aiStudio, icon: Sparkles },
+    { name: 'Settings', path: workspaceRoutes.settings, icon: Settings },
   ];
 
   return (

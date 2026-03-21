@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { fetchYouTubeChannelAnalytics, getAccounts, getPosts } from "../lib/localApp";
+import { workspaceRoutes } from "../lib/routes";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -89,7 +90,7 @@ const Dashboard = () => {
       {
         title: "Connect an account",
         description: "Link a YouTube channel or LinkedIn profile so the workspace has a destination.",
-        href: "/accounts",
+        href: workspaceRoutes.accounts,
         action: hasAccounts ? "Manage accounts" : "Connect account",
         icon: Link2,
         done: hasAccounts,
@@ -97,7 +98,7 @@ const Dashboard = () => {
       {
         title: "Create your first post",
         description: "Draft a post or import a video so the workspace has content to work with.",
-        href: "/new",
+        href: workspaceRoutes.newPost,
         action: hasPosts ? "Create another post" : "Create first post",
         icon: PenSquare,
         done: hasPosts,
@@ -105,7 +106,7 @@ const Dashboard = () => {
       {
         title: "Schedule or publish",
         description: "Move content out of draft so your queue starts doing real work.",
-        href: hasLiveContent ? "/queue" : "/new",
+        href: hasLiveContent ? workspaceRoutes.queue : workspaceRoutes.newPost,
         action: hasLiveContent ? "Open queue" : "Schedule a post",
         icon: CalendarClock,
         done: hasLiveContent,
@@ -263,7 +264,7 @@ const Dashboard = () => {
                 <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Recent Posts</p>
                 <h2 className="text-2xl font-light text-white tracking-tight">What is in motion</h2>
               </div>
-              <Link to="/new" className="text-sm text-occium-gold hover:text-white transition-colors">
+              <Link to={workspaceRoutes.newPost} className="text-sm text-occium-gold hover:text-white transition-colors">
                 Create new
               </Link>
             </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { useForm } from "react-hook-form";
@@ -28,6 +29,7 @@ import {
   inspectYouTubeSource,
   uploadYouTubeImport,
 } from "../lib/localApp";
+import { workspaceRoutes } from "../lib/routes";
 
 const HELPER_BOOT_COMMAND = "start-helper.bat";
 
@@ -522,9 +524,9 @@ const NewPost = () => {
                     ))}
                 </select>
                 {accounts.filter((account) => account.platform === activeTab).length === 0 && (
-                  <a href="/accounts" className="text-occium-gold text-xs hover:underline">
+                  <RouterLink to={workspaceRoutes.accounts} className="text-occium-gold text-xs hover:underline">
                     Connect Account
-                  </a>
+                  </RouterLink>
                 )}
               </div>
 
@@ -964,9 +966,12 @@ const NewPost = () => {
                 {HELPER_BOOT_COMMAND}
               </div>
               {youtubeAccounts.length === 0 && (
-                <a href="/accounts" className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5">
+                <RouterLink
+                  to={workspaceRoutes.accounts}
+                  className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5"
+                >
                   Connect a YouTube channel first
-                </a>
+                </RouterLink>
               )}
             </GlassCard>
           )}

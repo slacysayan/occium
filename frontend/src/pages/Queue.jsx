@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { DayPicker } from "react-day-picker";
@@ -6,6 +7,7 @@ import { format, isSameDay, parseISO } from "date-fns";
 import { Calendar as CalendarIcon, Clock, Trash2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { deletePost, getPosts } from "../lib/localApp";
+import { workspaceRoutes } from "../lib/routes";
 
 const Queue = () => {
   const { user } = useAuth();
@@ -80,9 +82,9 @@ const Queue = () => {
                 <div className="text-center py-20 text-white/30">
                   <Clock size={48} className="mx-auto mb-4 opacity-50" />
                   <p>No posts scheduled for this day.</p>
-                  <a href="/new" className="text-occium-gold hover:underline mt-2 inline-block">
+                  <Link to={workspaceRoutes.newPost} className="text-occium-gold hover:underline mt-2 inline-block">
                     Schedule one now
-                  </a>
+                  </Link>
                 </div>
               ) : (
                 selectedDatePosts.map((post) => (
