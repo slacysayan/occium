@@ -31,7 +31,6 @@ const NewPost = () => {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setAccounts(res.data);
-            // Auto select first account of active tab type
             const first = res.data.find(a => a.platform === activeTab);
             if (first) setSelectedAccount(first._id);
         } catch (error) {
@@ -39,7 +38,6 @@ const NewPost = () => {
         }
     };
 
-    // Update selected account when tab changes
     useEffect(() => {
         const first = accounts.find(a => a.platform === activeTab);
         if (first) setSelectedAccount(first._id);
@@ -50,32 +48,20 @@ const NewPost = () => {
         const url = watch('source_url');
         if (!url) return toast.error("Please enter a YouTube URL");
         
-        // Basic Youtube ID regex
-        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-        const match = url.match(regExp);
-        const videoId = (match && match[2].length === 11) ? match[2] : null;
-
-        if (!videoId) return toast.error("Invalid YouTube URL");
-
         const toastId = toast.loading("Fetching video details...");
         
         try {
-            // In a real app, backend would fetch this from YouTube API
-            // For MVP, we'll simulate or use oEmbed if possible, but let's mock the "Import" experience
+            // Real backend call using yt-dlp
+            const res = await axios.post(`${API_URL}/video/fetch`, { url }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             
-            // Simulating API latency
-            await new Promise(r => setTimeout(r, 1000));
-            
-            const mockData = {
-                title: "Imported Video: " + videoId,
-                description: "This is an imported video description for scheduling.",
-                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
-            };
+            const { title, description, thumbnail } = res.data;
 
-            setValue('title', mockData.title);
-            setValue('description', mockData.description);
-            setValue('thumbnail_url', mockData.thumbnail); // Store for preview
-            setVideoPreview(mockData.thumbnail);
+            setValue('title', title);
+            setValue('description', description);
+            setValue('thumbnail_url', thumbnail); 
+            setVideoPreview(thumbnail);
             
             toast.dismiss(toastId);
             toast.success("Video imported!");
