@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { AuthWrapper, useAuth } from "./context/AuthContext";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 import AppBackdrop from "./components/layout/AppBackdrop";
 import Sidebar from "./components/layout/Sidebar";
 import LandingPage from "./pages/LandingPage";
@@ -48,35 +49,37 @@ const WorkspaceLayout = () => {
 
 const App = () => (
   <AuthWrapper>
-    <>
-      <Router>
-        <Routes>
-          <Route element={<MarketingLayout />}>
-            <Route path="/" element={<LandingPage />} />
-          </Route>
+    <WorkspaceProvider>
+      <>
+        <Router>
+          <Routes>
+            <Route element={<MarketingLayout />}>
+              <Route path="/" element={<LandingPage />} />
+            </Route>
 
-          <Route element={<WorkspaceLayout />}>
-            <Route path={workspaceRoutes.dashboard} element={<Dashboard />} />
-            <Route path={workspaceRoutes.accounts} element={<Accounts />} />
-            <Route path={workspaceRoutes.newPost} element={<NewPost />} />
-            <Route path={workspaceRoutes.queue} element={<Queue />} />
-            <Route path={workspaceRoutes.aiStudio} element={<AIStudio />} />
-            <Route path={workspaceRoutes.settings} element={<Settings />} />
-          </Route>
+            <Route element={<WorkspaceLayout />}>
+              <Route path={workspaceRoutes.dashboard} element={<Dashboard />} />
+              <Route path={workspaceRoutes.accounts} element={<Accounts />} />
+              <Route path={workspaceRoutes.newPost} element={<NewPost />} />
+              <Route path={workspaceRoutes.queue} element={<Queue />} />
+              <Route path={workspaceRoutes.aiStudio} element={<AIStudio />} />
+              <Route path={workspaceRoutes.settings} element={<Settings />} />
+            </Route>
 
-          <Route path="/login" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
-          <Route path="/app" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
-          <Route path="/accounts" element={<Navigate to={workspaceRoutes.accounts} replace />} />
-          <Route path="/new" element={<Navigate to={workspaceRoutes.newPost} replace />} />
-          <Route path="/queue" element={<Navigate to={workspaceRoutes.queue} replace />} />
-          <Route path="/ai-studio" element={<Navigate to={workspaceRoutes.aiStudio} replace />} />
-          <Route path="/settings" element={<Navigate to={workspaceRoutes.settings} replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
-      <Toaster position="bottom-right" theme="dark" />
-      <Analytics />
-    </>
+            <Route path="/login" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
+            <Route path="/app" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
+            <Route path="/accounts" element={<Navigate to={workspaceRoutes.accounts} replace />} />
+            <Route path="/new" element={<Navigate to={workspaceRoutes.newPost} replace />} />
+            <Route path="/queue" element={<Navigate to={workspaceRoutes.queue} replace />} />
+            <Route path="/ai-studio" element={<Navigate to={workspaceRoutes.aiStudio} replace />} />
+            <Route path="/settings" element={<Navigate to={workspaceRoutes.settings} replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+        <Toaster position="bottom-right" theme="dark" />
+        <Analytics />
+      </>
+    </WorkspaceProvider>
   </AuthWrapper>
 );
 

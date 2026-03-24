@@ -1,27 +1,26 @@
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
-import { useAuth } from "../context/AuthContext";
+import { useWorkspace } from "../context/WorkspaceContext";
 import { DayPicker } from "react-day-picker";
 import { format, isSameDay, parseISO } from "date-fns";
 import { Calendar as CalendarIcon, Clock, Trash2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
-import { deletePost, getPosts } from "../lib/localApp";
+import { deletePost } from "../lib/localApp";
 import { workspaceRoutes } from "../lib/routes";
 
 const Queue = () => {
-  const { user } = useAuth();
-  const [posts, setPosts] = useState([]);
+  const { posts } = useWorkspace();
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  useEffect(() => {
-    if (user) {
-      setPosts(getPosts(user.id));
-    }
-  }, [user]);
-
-  const scheduledPosts = posts.filter((post) => post.status === "scheduled" && post.scheduled_at);
-  const selectedDatePosts = scheduledPosts.filter((post) => isSameDay(parseISO(post.scheduled_at), selectedDate));
+  const scheduledPosts = useMemo(
+    () => posts.filter((post) => post.status === "scheduled" && post.scheduled_at),
+    [posts],
+  );
+  const selectedDatePosts = useMemo(
+    () => scheduledPosts.filter((post) => isSameDay(parseISO(post.scheduled_at), selectedDate)),
+    [scheduledPosts, selectedDate],
+  );
 
   const modifiers = {
     hasPost: (date) => scheduledPosts.some((post) => isSameDay(parseISO(post.scheduled_at), date)),
@@ -42,7 +41,6 @@ const Queue = () => {
 
     try {
       deletePost(id);
-      setPosts((currentPosts) => currentPosts.filter((post) => post._id !== id));
       toast.success("Post deleted");
     } catch (error) {
       console.error(error);

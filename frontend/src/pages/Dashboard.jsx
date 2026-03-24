@@ -1,48 +1,46 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { GlassCard } from "../components/ui/GlassCard";
-import { useAuth } from "../context/AuthContext";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowRight,
   CalendarClock,
   CheckCircle2,
   Clock3,
   FileText,
+  Flame,
   Link2,
   PenSquare,
+  PlayCircle,
+  TrendingUp,
 } from "lucide-react";
-import { format } from "date-fns";
-import { fetchYouTubeChannelAnalytics, getAccounts, getPosts } from "../lib/localApp";
+import { GlassCard } from "../components/ui/GlassCard";
+import { useAuth } from "../context/AuthContext";
+import { useWorkspace } from "../context/WorkspaceContext";
+import {
+  fetchYouTubeChannelAnalytics,
+  getAccessTokenHealth,
+} from "../lib/localApp";
 import { workspaceRoutes } from "../lib/routes";
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const [accounts, setAccounts] = useState([]);
-  const [posts, setPosts] = useState([]);
+  const { accounts, posts, youtubeAccounts } = useWorkspace();
   const [youtubeAnalytics, setYouTubeAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  const connectedYouTubeAccount = useMemo(
+    () => youtubeAccounts.find((account) => account.access_token) || null,
+    [youtubeAccounts],
+  );
+
   useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    let isMounted = true;
-    const nextAccounts = getAccounts(user.id);
-    setAccounts(nextAccounts);
-    setPosts(getPosts(user.id));
-
-    const connectedYouTubeAccount = nextAccounts.find(
-      (account) => account.platform === "youtube" && account.access_token,
-    );
-
     if (!connectedYouTubeAccount) {
       setYouTubeAnalytics(null);
       setAnalyticsLoading(false);
-      return () => {
-        isMounted = false;
-      };
+      return undefined;
     }
+
+    let isMounted = true;
 
     setAnalyticsLoading(true);
     fetchYouTubeChannelAnalytics(connectedYouTubeAccount)
@@ -66,7 +64,7 @@ const Dashboard = () => {
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [connectedYouTubeAccount]);
 
   const stats = useMemo(() => {
     const drafts = posts.filter((post) => post.status === "draft").length;
@@ -116,6 +114,8 @@ const Dashboard = () => {
 
   const completedSteps = funnelSteps.filter((step) => step.done).length;
   const nextStep = funnelSteps.find((step) => !step.done) || funnelSteps[funnelSteps.length - 1];
+  const tokenHealth = getAccessTokenHealth(connectedYouTubeAccount);
+  const recentUploads = youtubeAnalytics?.recentVideos || [];
 
   return (
     <div className="space-y-10">
@@ -123,7 +123,7 @@ const Dashboard = () => {
         <div>
           <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
           <p className="text-white/40 font-light">
-            Welcome back, {user?.name.split(" ")[0]}. This workspace now reflects only real local data.
+            Welcome back, {user?.name.split(" ")[0]}. This workspace reflects live local state plus your connected YouTube pulse.
           </p>
         </div>
         <div className="text-right hidden md:block">
@@ -138,7 +138,7 @@ const Dashboard = () => {
         <SummaryCard icon={CheckCircle2} label="Published" value={stats.published} detail="Already completed" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,0.8fr] gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.15fr,0.85fr] gap-8">
         <GlassCard className="space-y-8" delay={0.1}>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -217,9 +217,20 @@ const Dashboard = () => {
           <GlassCard delay={0.18}>
             <div className="flex items-end justify-between gap-4 mb-6">
               <div>
-                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Channel Snapshot</p>
-                <h2 className="text-2xl font-light text-white tracking-tight">YouTube performance</h2>
+                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">YouTube Pulse</p>
+                <h2 className="text-2xl font-light text-white tracking-tight">Channel performance</h2>
               </div>
+              {connectedYouTubeAccount && (
+                <span className={`text-[10px] uppercase tracking-[0.18em] ${
+                  tokenHealth.status === "healthy"
+                    ? "text-emerald-300"
+                    : tokenHealth.status === "expiring"
+                      ? "text-amber-200"
+                      : "text-rose-300"
+                }`}>
+                  {formatTokenHealth(tokenHealth)}
+                </span>
+              )}
             </div>
 
             {analyticsLoading ? (
@@ -227,7 +238,7 @@ const Dashboard = () => {
                 Loading connected channel analytics...
               </div>
             ) : youtubeAnalytics ? (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 <div className="flex items-center gap-4">
                   {youtubeAnalytics.thumbnail ? (
                     <img
@@ -238,9 +249,9 @@ const Dashboard = () => {
                   ) : (
                     <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10" />
                   )}
-                  <div>
-                    <p className="text-white font-medium">{youtubeAnalytics.title}</p>
-                    <p className="text-white/35 text-sm mt-1">Live stats from the connected YouTube channel.</p>
+                  <div className="min-w-0">
+                    <p className="text-white font-medium line-clamp-1">{youtubeAnalytics.title}</p>
+                    <p className="text-white/35 text-sm mt-1">Live stats and recent upload momentum from the connected channel.</p>
                   </div>
                 </div>
 
@@ -249,11 +260,75 @@ const Dashboard = () => {
                   <AnalyticsStat label="Views" value={formatCompactNumber(youtubeAnalytics.views)} />
                   <AnalyticsStat label="Videos" value={formatCompactNumber(youtubeAnalytics.videos)} />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <PerformanceMetric
+                    icon={TrendingUp}
+                    label="Recent Avg Views"
+                    value={formatCompactNumber(Math.round(youtubeAnalytics.recentAverageViews || 0))}
+                  />
+                  <PerformanceMetric
+                    icon={CalendarClock}
+                    label="Upload Cadence"
+                    value={youtubeAnalytics.cadenceDays ? `${youtubeAnalytics.cadenceDays.toFixed(1)} days` : "Need more uploads"}
+                  />
+                  <PerformanceMetric
+                    icon={Flame}
+                    label="Recent Likes"
+                    value={formatCompactNumber(youtubeAnalytics.recentTotals?.likes || 0)}
+                  />
+                </div>
+
+                {youtubeAnalytics.topVideo && (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-white/35 text-xs uppercase tracking-[0.18em] mb-2">Top Recent Video</p>
+                    <div className="flex items-start gap-4">
+                      {youtubeAnalytics.topVideo.thumbnail ? (
+                        <img
+                          src={youtubeAnalytics.topVideo.thumbnail}
+                          alt=""
+                          className="w-24 h-16 rounded-xl object-cover border border-white/10"
+                        />
+                      ) : (
+                        <div className="w-24 h-16 rounded-xl border border-white/10 bg-white/5" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white font-medium line-clamp-2">{youtubeAnalytics.topVideo.title}</p>
+                        <p className="text-white/35 text-sm mt-2">
+                          {formatCompactNumber(youtubeAnalytics.topVideo.views)} views
+                          {youtubeAnalytics.topVideo.publishedAt
+                            ? ` · ${formatDistanceToNow(new Date(youtubeAnalytics.topVideo.publishedAt), { addSuffix: true })}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Recent Uploads</p>
+                    <span className="text-white/30 text-xs">
+                      {recentUploads.length ? `Latest ${recentUploads.length} videos` : "No recent uploads"}
+                    </span>
+                  </div>
+                  {recentUploads.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 p-4 text-white/45 text-sm">
+                      Connect a channel with at least one upload to unlock recent-video tracking.
+                    </div>
+                  ) : (
+                    recentUploads.slice(0, 4).map((video) => (
+                      <RecentUploadRow key={video.id} video={video} />
+                    ))
+                  )}
+                </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center">
                 <p className="text-white/55">No live YouTube analytics yet.</p>
-                <p className="text-white/35 text-sm mt-2">Connect a YouTube channel to surface subscribers, views, and upload count here.</p>
+                <p className="text-white/35 text-sm mt-2">
+                  Connect a YouTube channel to surface subscribers, views, recent uploads, and upload pace here.
+                </p>
               </div>
             )}
           </GlassCard>
@@ -312,11 +387,45 @@ const AnalyticsStat = ({ label, value }) => (
   </div>
 );
 
-const formatCompactNumber = (value) =>
-  new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value || 0);
+const PerformanceMetric = ({ icon: Icon, label, value }) => (
+  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="flex items-center gap-2 text-white/35 text-xs uppercase tracking-[0.18em]">
+      <Icon size={14} />
+      {label}
+    </div>
+    <p className="text-white text-lg font-medium mt-3">{value}</p>
+  </div>
+);
+
+const RecentUploadRow = ({ video }) => (
+  <a
+    href={video.url}
+    target="_blank"
+    rel="noreferrer"
+    className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition-colors"
+  >
+    {video.thumbnail ? (
+      <img src={video.thumbnail} alt="" className="w-20 h-12 object-cover rounded-lg border border-white/10" />
+    ) : (
+      <div className="w-20 h-12 rounded-lg border border-white/10 bg-white/5" />
+    )}
+    <div className="min-w-0 flex-1">
+      <p className="text-white text-sm font-medium line-clamp-2">{video.title}</p>
+      <div className="flex flex-wrap items-center gap-3 text-white/35 text-xs mt-2">
+        <span className="inline-flex items-center gap-1">
+          <PlayCircle size={12} />
+          {formatCompactNumber(video.views)}
+        </span>
+        <span>{formatDurationSeconds(video.durationSeconds)}</span>
+        <span>
+          {video.publishedAt
+            ? formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })
+            : "Publish date n/a"}
+        </span>
+      </div>
+    </div>
+  </a>
+);
 
 const SummaryCard = ({ icon: Icon, label, value, detail }) => (
   <GlassCard className="p-6" delay={0.05}>
@@ -332,5 +441,43 @@ const SummaryCard = ({ icon: Icon, label, value, detail }) => (
     </div>
   </GlassCard>
 );
+
+const formatCompactNumber = (value) =>
+  new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value || 0);
+
+const formatDurationSeconds = (seconds) => {
+  if (!seconds) {
+    return "Duration n/a";
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return [hours, minutes, remainingSeconds]
+      .map((value) => String(value).padStart(2, "0"))
+      .join(":");
+  }
+
+  return [minutes, remainingSeconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+};
+
+const formatTokenHealth = (tokenHealth) => {
+  if (tokenHealth.status === "expiring") {
+    return `${tokenHealth.expiresInMinutes} min left`;
+  }
+
+  if (tokenHealth.status === "expired") {
+    return "Reconnect required";
+  }
+
+  return "OAuth healthy";
+};
 
 export default Dashboard;

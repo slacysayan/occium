@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
+import { useWorkspace } from "../context/WorkspaceContext";
 import { useForm } from "react-hook-form";
 import {
   Youtube,
@@ -22,9 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   createPost,
   fetchVideoMetadata,
-  getAccountById,
-  getAccounts,
-  getLocalHelperStatus,
+  getAccessTokenHealth,
   ghostwrite,
   inspectYouTubeSource,
   uploadYouTubeImport,
@@ -44,16 +43,20 @@ const defaultValues = {
 
 const NewPost = () => {
   const { user } = useAuth();
+  const {
+    accounts,
+    youtubeAccounts,
+    helperStatus,
+    helperLoading,
+    refreshHelperStatus,
+  } = useWorkspace();
   const [activeTab, setActiveTab] = useState("youtube");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(null);
-  const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
-  const [helperStatus, setHelperStatus] = useState({ available: false, status: "checking" });
   const [metadataSource, setMetadataSource] = useState("");
-  const [isCheckingHelper, setIsCheckingHelper] = useState(false);
   const [collectionSource, setCollectionSource] = useState(null);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState([]);
   const [collectionFilter, setCollectionFilter] = useState("");
@@ -69,69 +72,36 @@ const NewPost = () => {
     defaultValues,
   });
 
-  const youtubeAccounts = useMemo(
-    () => accounts.filter((account) => account.platform === "youtube"),
-    [accounts],
-  );
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    const nextAccounts = getAccounts(user.id);
-    setAccounts(nextAccounts);
-    const firstAccount = nextAccounts.find((account) => account.platform === activeTab);
-    if (firstAccount) {
-      setSelectedAccount(firstAccount._id);
-    }
-  }, [user, activeTab]);
-
   useEffect(() => {
     const firstAccount = accounts.find((account) => account.platform === activeTab);
-    if (firstAccount) {
+    const selectedStillExists = accounts.some((account) => account._id === selectedAccount);
+
+    if (!selectedStillExists && firstAccount) {
       setSelectedAccount(firstAccount._id);
-    } else {
+    } else if (!firstAccount) {
       setSelectedAccount(null);
     }
-  }, [activeTab, accounts]);
-
-  useEffect(() => {
-    if (activeTab !== "youtube") {
-      return;
-    }
-
-    let isMounted = true;
-
-    const checkHelper = async () => {
-      setIsCheckingHelper(true);
-      const nextStatus = await getLocalHelperStatus();
-      if (isMounted) {
-        setHelperStatus(nextStatus);
-        setIsCheckingHelper(false);
-      }
-    };
-
-    checkHelper();
-
-    const intervalId = window.setInterval(checkHelper, 10000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [activeTab]);
+  }, [activeTab, accounts, selectedAccount]);
 
   const helperLabel = helperStatus.available
     ? "Helper online"
+    : helperLoading || helperStatus.status === "checking"
+      ? "Checking helper"
     : helperStatus.status === "degraded"
       ? "Helper online, yt-dlp missing"
       : "Helper offline";
-  const selectedYouTubeAccount = selectedAccount ? getAccountById(selectedAccount) : null;
+  const selectedYouTubeAccount = useMemo(
+    () => accounts.find((account) => account._id === selectedAccount) || null,
+    [accounts, selectedAccount],
+  );
   const sourceUrl = watch("source_url");
   const currentTitle = watch("title");
   const currentPrivacyStatus = watch("privacy_status");
   const currentTagsInput = watch("tags_input");
+  const tokenHealth = useMemo(
+    () => getAccessTokenHealth(selectedYouTubeAccount),
+    [selectedYouTubeAccount],
+  );
   const filteredCollectionEntries = useMemo(() => {
     if (!collectionSource) {
       return [];
@@ -164,13 +134,6 @@ const NewPost = () => {
           : sourceUrl && currentTitle
       ),
   );
-
-  const refreshHelperStatus = async () => {
-    setIsCheckingHelper(true);
-    const nextStatus = await getLocalHelperStatus();
-    setHelperStatus(nextStatus);
-    setIsCheckingHelper(false);
-  };
 
   const copyHelperCommand = async () => {
     try {
@@ -275,6 +238,49 @@ const NewPost = () => {
     return nextDate.toISOString();
   };
 
+  const selectionSummary = useMemo(() => {
+    if (!collectionSource) {
+      return null;
+    }
+
+    const totalDurationSeconds = selectedCollectionEntries.reduce(
+      (total, entry) => total + (entry.duration || 0),
+      0,
+    );
+
+    return {
+      sourceType: collectionSource.source_type,
+      selectedCount: selectedCollectionEntries.length,
+      totalDurationSeconds,
+      totalDurationLabel: formatVideoDuration(totalDurationSeconds),
+    };
+  }, [collectionSource, selectedCollectionEntries]);
+
+  const batchSchedulePreview = useMemo(() => {
+    if (!collectionSource || selectedCollectionEntries.length === 0) {
+      return [];
+    }
+
+    return selectedCollectionEntries.slice(0, 4).map((entry, index) => {
+      if (!scheduleDate) {
+        return {
+          id: entry.id,
+          title: entry.title,
+          publishAt: null,
+        };
+      }
+
+      const nextDate = new Date(scheduleDate);
+      nextDate.setMinutes(nextDate.getMinutes() + index * bulkIntervalMinutes);
+
+      return {
+        id: entry.id,
+        title: entry.title,
+        publishAt: nextDate.toISOString(),
+      };
+    });
+  }, [collectionSource, selectedCollectionEntries, scheduleDate, bulkIntervalMinutes]);
+
   const onSubmit = async (data) => {
     if (!selectedAccount) {
       return toast.error(`Please connect a ${activeTab} account first`);
@@ -284,7 +290,7 @@ const NewPost = () => {
 
     try {
       if (activeTab === "youtube") {
-        const account = getAccountById(selectedAccount);
+        const account = selectedYouTubeAccount;
         const publishAt = scheduleDate ? scheduleDate.toISOString() : null;
         const requestedPrivacy = data.privacy_status || "private";
 
@@ -572,13 +578,32 @@ const NewPost = () => {
                               onClick={refreshHelperStatus}
                               className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
                             >
-                              {isCheckingHelper ? "Checking..." : "Refresh helper status"}
+                              {helperLoading ? "Checking..." : "Refresh helper status"}
                             </button>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
+
+                  {selectedYouTubeAccount?.access_token && tokenHealth.status !== "healthy" && (
+                    <div
+                      className={`rounded-xl border px-4 py-3 text-sm ${
+                        tokenHealth.status === "expired"
+                          ? "border-rose-400/20 bg-rose-500/5 text-rose-200"
+                          : "border-amber-300/20 bg-amber-500/5 text-amber-100"
+                      }`}
+                    >
+                      <p className="font-medium">
+                        {tokenHealth.status === "expired"
+                          ? "This channel token has expired."
+                          : "This channel token is expiring soon."}
+                      </p>
+                      <p className="text-xs mt-1 opacity-80">
+                        Reconnect the channel from Accounts before a large import so the upload handoff does not fail mid-batch.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex items-center gap-2">
@@ -743,6 +768,14 @@ const NewPost = () => {
                           Selected videos keep their own titles and descriptions. Privacy, tags, and the schedule interval apply across the batch.
                         </p>
                       </div>
+
+                      {selectionSummary && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <CollectionMetric label="Selected Videos" value={selectionSummary.selectedCount} />
+                          <CollectionMetric label="Source Type" value={selectionSummary.sourceType} />
+                          <CollectionMetric label="Selected Runtime" value={selectionSummary.totalDurationLabel} />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -812,6 +845,9 @@ const NewPost = () => {
                   {selectedYouTubeAccount?.token_expires_at && (
                     <p className="text-white/30 text-xs">
                       Channel token valid until {format(new Date(selectedYouTubeAccount.token_expires_at), "MMM d, h:mm a")}
+                      {tokenHealth.status === "expiring" && tokenHealth.expiresInMinutes !== null
+                        ? ` · ${tokenHealth.expiresInMinutes} minutes remaining`
+                        : ""}
                     </p>
                   )}
                 </div>
@@ -951,6 +987,53 @@ const NewPost = () => {
             </AnimatePresence>
           </GlassCard>
 
+          {activeTab === "youtube" && collectionSource && (
+            <GlassCard>
+              <h3 className="text-lg font-medium text-white mb-4">Batch Plan</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <CollectionMetric
+                    label="Ready To Upload"
+                    value={selectionSummary?.selectedCount || 0}
+                  />
+                  <CollectionMetric
+                    label="Gap"
+                    value={`${bulkIntervalMinutes} min`}
+                  />
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-white/55 text-xs uppercase tracking-[0.18em] mb-2">Schedule Preview</p>
+                  {batchSchedulePreview.length === 0 ? (
+                    <p className="text-white/40 text-sm">
+                      Select at least one video to preview the first publish slots.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {batchSchedulePreview.map((item, index) => (
+                        <div key={item.id} className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-white text-sm line-clamp-2">{item.title}</p>
+                            <p className="text-white/30 text-xs mt-1">Video {index + 1}</p>
+                          </div>
+                          <div className="text-right text-xs text-white/45 shrink-0">
+                            {item.publishAt
+                              ? format(new Date(item.publishAt), "MMM d, h:mm a")
+                              : "Uploads immediately"}
+                          </div>
+                        </div>
+                      ))}
+                      {selectedCollectionEntries.length > batchSchedulePreview.length && (
+                        <p className="text-white/30 text-xs">
+                          +{selectedCollectionEntries.length - batchSchedulePreview.length} more videos follow the same interval pattern.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
           {activeTab === "youtube" && (
             <GlassCard>
               <h3 className="text-lg font-medium text-white mb-4">YouTube Import Flow</h3>
@@ -997,6 +1080,13 @@ const TabButton = ({ active, onClick, icon: Icon, label, color }) => (
       />
     )}
   </button>
+);
+
+const CollectionMetric = ({ label, value }) => (
+  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">{label}</p>
+    <p className="text-white text-lg font-medium mt-3">{value}</p>
+  </div>
 );
 
 const formatVideoDuration = (seconds) => {

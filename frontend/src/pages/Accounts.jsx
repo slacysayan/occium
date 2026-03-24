@@ -1,39 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
+import { useWorkspace } from "../context/WorkspaceContext";
 import { Check, Plus, Trash2, Youtube, Linkedin, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { appEnv } from "../config/env";
-import { deleteAccount, getAccounts } from "../lib/localApp";
+import { deleteAccount, getAccessTokenHealth } from "../lib/localApp";
 
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
 
 const Accounts = () => {
-  const { user, connectYouTubeAccount, connectLinkedInAccount } = useAuth();
-  const [accounts, setAccounts] = useState([]);
+  const { connectYouTubeAccount, connectLinkedInAccount } = useAuth();
+  const { accounts } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const youtubeOAuthReady = appEnv.enableGoogleConnect && Boolean(appEnv.googleClientId);
   const youtubeMetadataReady = Boolean(appEnv.youtubeApiKey);
-
-  useEffect(() => {
-    if (user) {
-      setAccounts(getAccounts(user.id));
-    }
-  }, [user]);
-
-  const refreshAccounts = () => {
-    if (!user) {
-      return;
-    }
-
-    setAccounts(getAccounts(user.id));
-  };
 
   const connectLinkedIn = async () => {
     try {
       setIsLoading(true);
       await connectLinkedInAccount();
-      refreshAccounts();
       toast.success("LinkedIn connected successfully!");
     } catch (error) {
       console.error(error);
@@ -47,7 +33,6 @@ const Accounts = () => {
     try {
       setIsLoading(true);
       await connectYouTubeAccount();
-      refreshAccounts();
       toast.success("YouTube connected successfully!");
     } catch (error) {
       console.error(error);
@@ -64,7 +49,6 @@ const Accounts = () => {
 
     try {
       deleteAccount(id);
-      setAccounts((currentAccounts) => currentAccounts.filter((account) => account._id !== id));
       toast.success("Account disconnected");
     } catch (error) {
       console.error(error);
@@ -120,7 +104,7 @@ const Accounts = () => {
                     <div>
                       <div className="text-white font-medium">{account.account_name}</div>
                       <div className="text-white/30 text-xs flex items-center gap-1">
-                        <Check size={10} className="text-green-400" /> Synced
+                        <Check size={10} className="text-green-400" /> {getAccountStatusLabel(account)}
                       </div>
                     </div>
                   </div>
@@ -193,7 +177,7 @@ const Accounts = () => {
                     <div>
                       <div className="text-white font-medium">{account.account_name}</div>
                       <div className="text-white/30 text-xs flex items-center gap-1">
-                        <Check size={10} className="text-green-400" /> Synced
+                        <Check size={10} className="text-green-400" /> Browser connected
                       </div>
                     </div>
                   </div>
@@ -243,6 +227,20 @@ const Accounts = () => {
       </div>
     </div>
   );
+};
+
+const getAccountStatusLabel = (account) => {
+  const tokenHealth = getAccessTokenHealth(account);
+
+  if (tokenHealth.status === "expiring" && tokenHealth.expiresInMinutes !== null) {
+    return `Reconnect soon · ${tokenHealth.expiresInMinutes} min left`;
+  }
+
+  if (tokenHealth.status === "expired") {
+    return "Reconnect required";
+  }
+
+  return "Synced";
 };
 
 export default Accounts;

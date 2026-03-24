@@ -2,6 +2,7 @@ import axios from "axios";
 import { appEnv } from "../config/env";
 
 const STORAGE_KEY = "occium.local.app.v2";
+const STORAGE_EVENT = "occium:statechange";
 const LOCAL_USER_ID = "local_owner";
 
 const toneMap = {
@@ -54,6 +55,9 @@ function readState() {
 
 function writeState(state) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(STORAGE_EVENT, { detail: state }));
+  }
   return state;
 }
 
@@ -243,6 +247,23 @@ function parseTags(tags) {
   return [];
 }
 
+function parseIsoDurationToSeconds(value) {
+  if (!value || typeof value !== "string") {
+    return 0;
+  }
+
+  const parts = value.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!parts) {
+    return 0;
+  }
+
+  const hours = Number.parseInt(parts[1] || "0", 10);
+  const minutes = Number.parseInt(parts[2] || "0", 10);
+  const seconds = Number.parseInt(parts[3] || "0", 10);
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
 async function fetchHelper(path, options = {}) {
   const url = `${appEnv.localHelperUrl}${path}`;
   const response = await axios({
@@ -251,6 +272,18 @@ async function fetchHelper(path, options = {}) {
     data: options.data,
     timeout: options.timeout || 1500,
     headers: options.headers,
+  });
+
+  return response.data;
+}
+
+async function fetchYouTubeApi(path, accessToken, params, timeout = 5000) {
+  const response = await axios.get(`https://www.googleapis.com/youtube/v3/${path}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    params,
+    timeout,
   });
 
   return response.data;
@@ -302,6 +335,33 @@ export function ensureLocalSession() {
   return {
     user: state.currentUser,
     token: "local-session",
+  };
+}
+
+export function getWorkspaceState() {
+  return ensureState();
+}
+
+export function subscribeToWorkspaceState(listener) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const notify = () => listener(ensureState());
+  const handleStateChange = (event) => listener(event.detail || ensureState());
+  const handleStorage = (event) => {
+    if (!event.key || event.key === STORAGE_KEY) {
+      notify();
+    }
+  };
+
+  notify();
+  window.addEventListener(STORAGE_EVENT, handleStateChange);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(STORAGE_EVENT, handleStateChange);
+    window.removeEventListener("storage", handleStorage);
   };
 }
 
@@ -424,6 +484,58 @@ export function connectYouTubeAccountFromGoogle({
   return {
     account: nextAccount,
     user: state.currentUser,
+  };
+}
+
+export function getAccessTokenHealth(account, warningWindowMinutes = 20) {
+  if (!account?.access_token) {
+    return {
+      status: "missing",
+      expiresAt: null,
+      expiresInMinutes: null,
+    };
+  }
+
+  if (!account?.token_expires_at) {
+    return {
+      status: "connected",
+      expiresAt: null,
+      expiresInMinutes: null,
+    };
+  }
+
+  const expiresAt = new Date(account.token_expires_at);
+  const expiresInMs = expiresAt.getTime() - Date.now();
+  const expiresInMinutes = Math.floor(expiresInMs / 60000);
+
+  if (Number.isNaN(expiresAt.getTime())) {
+    return {
+      status: "connected",
+      expiresAt: null,
+      expiresInMinutes: null,
+    };
+  }
+
+  if (expiresInMs <= 0) {
+    return {
+      status: "expired",
+      expiresAt,
+      expiresInMinutes: 0,
+    };
+  }
+
+  if (expiresInMinutes <= warningWindowMinutes) {
+    return {
+      status: "expiring",
+      expiresAt,
+      expiresInMinutes,
+    };
+  }
+
+  return {
+    status: "healthy",
+    expiresAt,
+    expiresInMinutes,
   };
 }
 
@@ -622,21 +734,108 @@ export async function fetchYouTubeChannelAnalytics(account) {
     return null;
   }
 
-  const response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
-    headers: {
-      Authorization: `Bearer ${account.access_token}`,
-    },
-    params: {
-      part: "snippet,statistics",
+  const response = await fetchYouTubeApi(
+    "channels",
+    account.access_token,
+    {
+      part: "snippet,statistics,contentDetails",
       id: account.channel_id,
     },
-    timeout: 5000,
-  });
+    5000,
+  );
 
-  const item = response.data?.items?.[0];
+  const item = response?.items?.[0];
   if (!item) {
     return null;
   }
+
+  const uploadsPlaylistId = item.contentDetails?.relatedPlaylists?.uploads || null;
+  let recentVideos = [];
+
+  if (uploadsPlaylistId) {
+    const playlistData = await fetchYouTubeApi(
+      "playlistItems",
+      account.access_token,
+      {
+        part: "snippet,contentDetails",
+        playlistId: uploadsPlaylistId,
+        maxResults: 6,
+      },
+      5000,
+    );
+
+    const playlistItems = playlistData?.items || [];
+    const recentVideoIds = playlistItems
+      .map((entry) => entry.contentDetails?.videoId)
+      .filter(Boolean);
+
+    if (recentVideoIds.length > 0) {
+      const videosData = await fetchYouTubeApi(
+        "videos",
+        account.access_token,
+        {
+          part: "snippet,statistics,contentDetails",
+          id: recentVideoIds.join(","),
+          maxResults: recentVideoIds.length,
+        },
+        5000,
+      );
+
+      const videosById = new Map((videosData?.items || []).map((video) => [video.id, video]));
+
+      recentVideos = recentVideoIds
+        .map((videoId) => {
+          const video = videosById.get(videoId);
+          if (!video) {
+            return null;
+          }
+
+          return {
+            id: video.id,
+            title: video.snippet?.title || "Untitled video",
+            thumbnail:
+              video.snippet?.thumbnails?.medium?.url ||
+              video.snippet?.thumbnails?.default?.url ||
+              "",
+            publishedAt: video.snippet?.publishedAt || null,
+            views: Number(video.statistics?.viewCount || 0),
+            likes: Number(video.statistics?.likeCount || 0),
+            comments: Number(video.statistics?.commentCount || 0),
+            durationSeconds: parseIsoDurationToSeconds(video.contentDetails?.duration),
+            url: `https://www.youtube.com/watch?v=${video.id}`,
+          };
+        })
+        .filter(Boolean);
+    }
+  }
+
+  const recentTotals = recentVideos.reduce(
+    (totals, video) => ({
+      views: totals.views + video.views,
+      likes: totals.likes + video.likes,
+      comments: totals.comments + video.comments,
+      durationSeconds: totals.durationSeconds + video.durationSeconds,
+    }),
+    {
+      views: 0,
+      likes: 0,
+      comments: 0,
+      durationSeconds: 0,
+    },
+  );
+  const topVideo = [...recentVideos].sort((left, right) => right.views - left.views)[0] || null;
+  const cadenceDays =
+    recentVideos.length > 1
+      ? recentVideos
+          .slice(1)
+          .map((video, index) => {
+            const currentTime = new Date(recentVideos[index].publishedAt || 0).getTime();
+            const nextTime = new Date(video.publishedAt || 0).getTime();
+            return Math.abs(currentTime - nextTime) / 86400000;
+          })
+          .reduce((total, value) => total + value, 0) /
+        (recentVideos.length - 1)
+      : null;
 
   return {
     title: item.snippet?.title || account.account_name,
@@ -648,6 +847,11 @@ export async function fetchYouTubeChannelAnalytics(account) {
     subscribers: Number(item.statistics?.subscriberCount || 0),
     views: Number(item.statistics?.viewCount || 0),
     videos: Number(item.statistics?.videoCount || 0),
+    recentVideos,
+    recentTotals,
+    recentAverageViews: recentVideos.length ? recentTotals.views / recentVideos.length : 0,
+    cadenceDays,
+    topVideo,
   };
 }
 
