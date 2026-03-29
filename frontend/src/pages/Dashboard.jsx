@@ -132,7 +132,13 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <SummaryCard icon={Link2} label="Connected" value={stats.connectedAccounts} detail="Accounts ready" />
+        <SummaryCard 
+          icon={Link2} 
+          label="Connected" 
+          value={stats.connectedAccounts} 
+          detail="Accounts ready" 
+          status={stats.connectedAccounts === 0 ? "danger" : undefined}
+        />
         <SummaryCard icon={FileText} label="Drafts" value={stats.drafts} detail="Posts to refine" />
         <SummaryCard icon={Clock3} label="Scheduled" value={stats.scheduled} detail="Queued to go out" />
         <SummaryCard icon={CheckCircle2} label="Published" value={stats.published} detail="Already completed" />
@@ -427,12 +433,14 @@ const RecentUploadRow = ({ video }) => (
   </a>
 );
 
-const SummaryCard = ({ icon: Icon, label, value, detail }) => (
-  <GlassCard className="p-6" delay={0.05}>
+const SummaryCard = ({ icon: Icon, label, value, detail, status }) => (
+  <GlassCard className="p-6 hover:scale-105 transition-all" delay={0.05}>
     <div className="flex items-center justify-between gap-4">
       <div>
         <p className="text-white/35 text-xs uppercase tracking-[0.2em] mb-3">{label}</p>
-        <h2 className="text-4xl font-light text-white tracking-tight">{value}</h2>
+        <h2 className={`text-4xl font-light tracking-tight ${status === "danger" ? "text-rose-300" : "text-white"}`}>
+          {formatCompactNumber(value)}
+        </h2>
         <p className="text-white/35 text-sm mt-2">{detail}</p>
       </div>
       <div className="w-12 h-12 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center text-white/75">
