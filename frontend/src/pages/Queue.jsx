@@ -57,15 +57,18 @@ const Queue = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
         <div className="lg:col-span-1">
           <GlassCard className="h-full">
-            <DayPicker
-              mode="single"
-              selected={selectedDate}
-              onSelect={setSelectedDate}
-              modifiers={modifiers}
-              modifiersStyles={modifiersStyles}
-              className="text-white mx-auto"
-              footer={<p className="text-center text-white/40 text-sm mt-4">Select a date to view scheduled content</p>}
-            />
+            <div className="calendar-shell">
+              <DayPicker
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                modifiers={modifiers}
+                modifiersStyles={modifiersStyles}
+                className="rdp-occium text-white mx-auto"
+                showOutsideDays
+                footer={<p className="text-center text-white/40 text-sm mt-4">Select a date to view scheduled content</p>}
+              />
+            </div>
           </GlassCard>
         </div>
 

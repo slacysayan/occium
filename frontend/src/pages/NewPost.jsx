@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
@@ -26,12 +26,15 @@ import {
   getAccessTokenHealth,
   ghostwrite,
   inspectYouTubeSource,
+  publishLinkedInPost,
+  scheduleLinkedInPost,
   uploadYouTubeImport,
 } from "../lib/localApp";
 import { createTask, updateTaskStatus } from "./Settings";
 import { workspaceRoutes } from "../lib/routes";
 
-const HELPER_BOOT_COMMAND = "start-helper.bat";
+// HELPER_BOOT_COMMAND removed as helper is now cloud-hosted.
+
 
 const defaultValues = {
   source_url: "",
@@ -43,7 +46,7 @@ const defaultValues = {
 };
 
 const NewPost = () => {
-  const { user } = useAuth();
+  const { user, connectYouTubeAccount } = useAuth();
   const {
     accounts,
     youtubeAccounts,
@@ -68,6 +71,11 @@ const NewPost = () => {
     total: 0,
     currentTitle: "",
   });
+  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
+  const [bulkCancelRequested, setBulkCancelRequested] = useState(false);
+  const metadataAbortControllerRef = useRef(null);
+  const submissionAbortControllerRef = useRef(null);
+  const cancelBulkUploadRef = useRef(false);
 
   const { register, handleSubmit, setValue, watch, reset } = useForm({
     defaultValues,
@@ -95,10 +103,15 @@ const NewPost = () => {
     () => accounts.find((account) => account._id === selectedAccount) || null,
     [accounts, selectedAccount],
   );
+  const selectedLinkedInAccount = useMemo(
+    () => accounts.find((account) => account._id === selectedAccount) || null,
+    [accounts, selectedAccount],
+  );
   const sourceUrl = watch("source_url");
   const currentTitle = watch("title");
   const currentPrivacyStatus = watch("privacy_status");
   const currentTagsInput = watch("tags_input");
+  const currentDescription = watch("description");
   const tokenHealth = useMemo(
     () => getAccessTokenHealth(selectedYouTubeAccount),
     [selectedYouTubeAccount],
@@ -135,27 +148,31 @@ const NewPost = () => {
           : sourceUrl && currentTitle
       ),
   );
+  const canPostToLinkedIn = Boolean(
+    selectedLinkedInAccount?.access_token &&
+      helperStatus.available &&
+      currentDescription?.trim(),
+  );
 
-  const copyHelperCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(HELPER_BOOT_COMMAND);
-      toast.success("Helper command copied");
-    } catch (error) {
-      console.error(error);
-      toast.error("Could not copy helper command");
-    }
-  };
+// copyHelperCommand removed
 
-  const handleVideoMetadataFetch = async () => {
+
+  const handleVideoMetadataFetch = useCallback(async () => {
     const url = sourceUrl;
     if (!url) {
       return toast.error("Please enter a YouTube URL");
     }
 
+    metadataAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    metadataAbortControllerRef.current = abortController;
+    setIsFetchingMetadata(true);
     const toastId = toast.loading("Fetching video details...");
 
     try {
-      const source = await inspectYouTubeSource(url);
+      const source = await inspectYouTubeSource(url, 80, {
+        signal: abortController.signal,
+      });
       setMetadataSource(source.metadata_source || "");
 
       if (source.kind === "collection") {
@@ -187,11 +204,22 @@ const NewPost = () => {
       toast.dismiss(toastId);
       toast.success("Video imported!");
     } catch (error) {
+      if (error?.code === "REQUEST_CANCELED") {
+        toast.dismiss(toastId);
+        toast.message("Metadata fetch canceled.");
+        return;
+      }
+
       console.error(error);
       toast.dismiss(toastId);
       toast.error(error?.message || "Failed to fetch metadata");
+    } finally {
+      if (metadataAbortControllerRef.current === abortController) {
+        metadataAbortControllerRef.current = null;
+      }
+      setIsFetchingMetadata(false);
     }
-  };
+  }, [setValue, sourceUrl]);
 
   // Auto-fetch metadata when a YouTube URL is pasted
   useEffect(() => {
@@ -202,8 +230,7 @@ const NewPost = () => {
       }, 800);
       return () => clearTimeout(timeoutId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceUrl]);
+  }, [collectionSource, currentTitle, handleVideoMetadataFetch, isGenerating, sourceUrl]);
 
   const resetFormState = () => {
     reset(defaultValues);
@@ -239,6 +266,25 @@ const NewPost = () => {
 
   const clearCollectionSelection = () => {
     setSelectedCollectionIds([]);
+  };
+
+  const handleCancelActiveWork = () => {
+    if (isFetchingMetadata && metadataAbortControllerRef.current) {
+      metadataAbortControllerRef.current.abort();
+      return;
+    }
+
+    if (bulkProgress.active) {
+      cancelBulkUploadRef.current = true;
+      setBulkCancelRequested(true);
+      toast.message("Bulk upload will stop after the current video finishes.");
+      return;
+    }
+
+    if (isSubmitting && submissionAbortControllerRef.current) {
+      submissionAbortControllerRef.current.abort();
+      toast.message("Canceling the current request...");
+    }
   };
 
   const buildScheduledPublishAt = (index) => {
@@ -300,6 +346,9 @@ const NewPost = () => {
     }
 
     setIsSubmitting(true);
+    cancelBulkUploadRef.current = false;
+    setBulkCancelRequested(false);
+    submissionAbortControllerRef.current = new AbortController();
 
     try {
       if (activeTab === "youtube") {
@@ -327,6 +376,10 @@ const NewPost = () => {
           });
 
           for (const [index, entry] of selectedCollectionEntries.entries()) {
+            if (cancelBulkUploadRef.current) {
+              break;
+            }
+
             setBulkProgress({
               active: true,
               completed: index,
@@ -410,12 +463,20 @@ const NewPost = () => {
             }
           }
 
+          const wasCanceled = cancelBulkUploadRef.current;
           setBulkProgress({
             active: false,
             completed: selectedCollectionEntries.length,
             total: selectedCollectionEntries.length,
             currentTitle: "",
           });
+          setBulkCancelRequested(false);
+          cancelBulkUploadRef.current = false;
+
+          if (wasCanceled) {
+            toast.message(`Bulk upload stopped after ${uploadedCount} completed videos.`);
+            return;
+          }
 
           if (uploadedCount === 0 && failures.length > 0) {
             throw new Error(failures[0].message);
@@ -454,6 +515,7 @@ const NewPost = () => {
             tags: data.tags_input,
             privacyStatus: requestedPrivacy,
             publishAt,
+            signal: submissionAbortControllerRef.current.signal,
           });
 
           createPost({
@@ -496,6 +558,61 @@ const NewPost = () => {
         return;
       }
 
+      if (activeTab === "linkedin") {
+        const account = selectedLinkedInAccount;
+        if (!account?.access_token) {
+          throw new Error("Reconnect the LinkedIn profile before posting.");
+        }
+
+        const publishAt = scheduleDate ? scheduleDate.toISOString() : null;
+        const text = data.description?.trim();
+        const linkUrl = data.source_url?.trim() || null;
+        const linkTitle = data.title?.trim() || null;
+
+        if (!text) {
+          throw new Error("Write the LinkedIn post copy before continuing.");
+        }
+
+        const postResult = publishAt
+          ? await scheduleLinkedInPost({
+              account,
+              text,
+              url: linkUrl,
+              title: linkTitle,
+              publishAt,
+              signal: submissionAbortControllerRef.current.signal,
+            })
+          : await publishLinkedInPost({
+              account,
+              text,
+              url: linkUrl,
+              title: linkTitle,
+              signal: submissionAbortControllerRef.current.signal,
+            });
+
+        createPost({
+          user_id: user.id,
+          account_id: selectedAccount,
+          platform: activeTab,
+          title: linkTitle,
+          description: text,
+          source_url: linkUrl,
+          scheduled_at: publishAt,
+          status: publishAt ? "scheduled" : "published",
+          platform_post_id: publishAt ? postResult.jobId : postResult.postId,
+          helper_status: publishAt ? "scheduled" : "completed",
+          upload_mode: "render-helper",
+        });
+
+        toast.success(
+          publishAt
+            ? "LinkedIn post scheduled on Render!"
+            : "Posted to LinkedIn successfully!",
+        );
+        resetFormState();
+        return;
+      }
+
       createPost({
         user_id: user.id,
         account_id: selectedAccount,
@@ -508,14 +625,21 @@ const NewPost = () => {
       toast.success("Post saved successfully!");
       resetFormState();
     } catch (error) {
+      if (error?.code === "REQUEST_CANCELED") {
+        toast.message("Operation canceled.");
+        return;
+      }
+
       console.error(error);
       toast.error(error?.message || "Failed to create post");
     } finally {
+      submissionAbortControllerRef.current = null;
       setIsSubmitting(false);
       setBulkProgress((currentState) => ({
         ...currentState,
         active: false,
       }));
+      setBulkCancelRequested(false);
     }
   };
 
@@ -610,7 +734,7 @@ const NewPost = () => {
                     <div>
                       <p className="text-white text-sm font-medium">{helperLabel}</p>
                       <p className="text-white/40 text-xs mt-1">
-                        Vercel hosts the app. The local Python helper handles source inspection, yt-dlp downloads, and the YouTube upload handoff from your own machine.
+                        Occium Engine is hosted on Render. This service handles source inspection, yt-dlp downloads, and the YouTube upload handoff autonomously.
                       </p>
                       {helperStatus.ytDlp?.version && (
                         <p className="text-white/30 text-xs mt-1">yt-dlp version: {helperStatus.ytDlp.version}</p>
@@ -623,26 +747,24 @@ const NewPost = () => {
                       {!helperStatus.available && (
                         <div className="mt-3 space-y-2">
                           <p className="text-white/55 text-xs">
-                            Run the helper locally from the repo root, then come back here and refresh helper status.
+                            The cloud helper engine at {getHelperUrl()} is currently unreachable. This may be due to the free instance spinning down.
                           </p>
-                          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white/80 text-xs font-mono break-all">
-                            {HELPER_BOOT_COMMAND}
-                          </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              onClick={copyHelperCommand}
-                              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
-                            >
-                              Copy command
-                            </button>
-                            <button
-                              type="button"
                               onClick={refreshHelperStatus}
-                              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
+                              className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors font-medium border border-white/5"
                             >
-                              {helperLoading ? "Checking..." : "Refresh helper status"}
+                              {helperLoading ? "Checking..." : "Retry Connection"}
                             </button>
+                            <a 
+                              href={getHelperUrl()} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="px-4 py-2 rounded-lg bg-occium-gold/10 hover:bg-occium-gold/20 text-occium-gold text-xs transition-colors font-medium border border-occium-gold/10"
+                            >
+                              Wake Helper
+                            </a>
                           </div>
                         </div>
                       )}
@@ -651,20 +773,39 @@ const NewPost = () => {
 
                   {selectedYouTubeAccount?.access_token && tokenHealth.status !== "healthy" && (
                     <div
-                      className={`rounded-xl border px-4 py-3 text-sm ${
+                      className={`rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-4 ${
                         tokenHealth.status === "expired"
                           ? "border-rose-400/20 bg-rose-500/5 text-rose-200"
                           : "border-amber-300/20 bg-amber-500/5 text-amber-100"
                       }`}
                     >
-                      <p className="font-medium">
-                        {tokenHealth.status === "expired"
-                          ? "This channel token has expired."
-                          : "This channel token is expiring soon."}
-                      </p>
-                      <p className="text-xs mt-1 opacity-80">
-                        Reconnect the channel from Accounts before a large import so the upload handoff does not fail mid-batch.
-                      </p>
+                      <div>
+                        <p className="font-medium">
+                          {tokenHealth.status === "expired"
+                            ? "This channel token has expired."
+                            : "This channel token is expiring soon."}
+                        </p>
+                        <p className="text-xs mt-1 opacity-80">
+                          Reconnect the channel to avoid upload handoff failures.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setIsSubmitting(true);
+                            await connectYouTubeAccount();
+                            toast.success("Channel reconnected!");
+                          } catch (err) {
+                            toast.error("Reconnection failed");
+                          } finally {
+                            setIsSubmitting(false);
+                          }
+                        }}
+                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all whitespace-nowrap"
+                      >
+                        Reconnect Now
+                      </button>
                     </div>
                   )}
 
@@ -678,18 +819,33 @@ const NewPost = () => {
                         className="w-full glass-input rounded-lg px-4 py-3 font-mono text-sm"
                         placeholder="Paste a YouTube video, playlist, or channel link..."
                       />
+                    <button
+                      type="button"
+                      onClick={handleVideoMetadataFetch}
+                      disabled={isFetchingMetadata}
+                      className="px-6 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+                    >
+                        {isFetchingMetadata ? "Fetching..." : "Fetch"}
+                    </button>
+                    {isFetchingMetadata && (
                       <button
                         type="button"
-                        onClick={handleVideoMetadataFetch}
-                        className="px-6 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+                        onClick={handleCancelActiveWork}
+                        className="px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-100 rounded-lg transition-colors font-medium text-sm whitespace-nowrap border border-rose-400/20"
                       >
-                        Fetch
+                        Cancel
                       </button>
-                    </div>
-                    {metadataSource && (
-                      <p className="text-white/30 text-xs">
-                        Metadata source: {metadataSource}
-                        {metadataSource !== "python-helper" && " . Upload still needs the local Python helper."}
+                    )}
+                  </div>
+                  {isFetchingMetadata && (
+                    <p className="text-white/35 text-xs">
+                      Inspecting the URL, retrying the Render helper if needed, and validating the source.
+                    </p>
+                  )}
+                  {metadataSource && (
+                    <p className="text-white/30 text-xs">
+                      Metadata source: {metadataSource}
+                        {metadataSource !== "python-helper" && " . Using cloud pipeline for extraction."}
                       </p>
                     )}
                   </div>
@@ -799,13 +955,13 @@ const NewPost = () => {
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                        <p className="text-white/60 text-xs uppercase tracking-[0.2em] mb-2">Bulk Apply</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <p className="text-white/60 text-xs uppercase tracking-[0.2em] mb-3 font-bold">Bulk Strategy</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div className="space-y-2">
-                            <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
+                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Privacy</label>
                             <select
                               {...register("privacy_status")}
-                              className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
+                              className="w-full glass-input rounded-lg px-3 py-2 text-white bg-transparent text-sm"
                             >
                               <option value="private" className="text-black">
                                 Private
@@ -819,16 +975,28 @@ const NewPost = () => {
                             </select>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags Applied To All</label>
+                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Global Tags</label>
                             <input
                               {...register("tags_input")}
-                              className="w-full glass-input rounded-lg px-4 py-3"
-                              placeholder="marketing, ai, growth"
+                              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
+                              placeholder="ai, branding"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest flex justify-between">
+                              Interval <span>(Min)</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={bulkIntervalMinutes}
+                              onChange={(e) => setBulkIntervalMinutes(parseInt(e.target.value) || 0)}
+                              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
+                              min="1"
                             />
                           </div>
                         </div>
-                        <p className="text-white/35 text-xs mt-3">
-                          Selected videos keep their own titles and descriptions. Privacy, tags, and the schedule interval apply across the batch.
+                        <p className="text-white/20 text-[10px] mt-3 italic">
+                          Each video maintains its own metadata. Privacy, tags, and scheduling offset apply to the entire batch.
                         </p>
                       </div>
 
@@ -941,41 +1109,134 @@ const NewPost = () => {
                       placeholder="What do you want to talk about?"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
-                      Image URL (Optional)
-                    </label>
-                    <input
-                      {...register("thumbnail_url")}
-                      className="w-full glass-input rounded-lg px-4 py-3"
-                      placeholder="https://..."
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Link URL (Optional)
+                      </label>
+                      <input
+                        {...register("source_url")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                        placeholder="https://www.linkedin.com/posts/..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Link Title (Optional)
+                      </label>
+                      <input
+                        {...register("title")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                        placeholder="Optional article or video title"
+                      />
+                    </div>
                   </div>
+                  <p className="text-white/30 text-xs leading-relaxed">
+                    LinkedIn image uploads are not wired yet. This composer currently supports text-only posts and article shares through the Render helper.
+                  </p>
                 </div>
               )}
 
-              <div className="mt-auto pt-8 flex items-center justify-between border-t border-white/10">
-                <div className="text-white/60 text-sm flex items-center gap-2">
-                  {scheduleDate && <CalendarIcon size={16} className="text-occium-gold" />}
-                  {scheduleDate ? `Scheduled: ${format(scheduleDate, "MMM d, h:mm a")}` : "Ready to post"}
-                </div>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || (activeTab === "youtube" && !canUploadToYouTube)}
-                  className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
-                >
-                  {isSubmitting ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" /> Working...
-                    </span>
-                  ) : scheduleDate ? (
-                    collectionSource ? `Schedule ${selectedCollectionEntries.length || 0} Videos` : "Schedule Post"
-                  ) : activeTab === "youtube" ? (
-                    collectionSource ? `Upload ${selectedCollectionEntries.length || 0} Videos` : "Upload to YouTube"
+              <div className="mt-8 pt-8 border-t border-white/10">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${scheduleDate ? 'bg-occium-gold/10 text-occium-gold' : 'bg-white/5 text-white/40'}`}>
+                      <CalendarIcon size={20} />
+                    </div>
+                    <div>
+                      <p className="text-white font-medium text-sm">
+                        {scheduleDate ? format(scheduleDate, "MMM d, h:mm a") : "Post or Upload Now"}
+                      </p>
+                      <p className="text-white/40 text-xs">
+                        {scheduleDate ? "Scheduled release" : "Instant publication"}
+                      </p>
+                    </div>
+                  </div>
+                  {!scheduleDate ? (
+                    <button
+                      type="button"
+                      onClick={() => setScheduleDate(new Date())}
+                      className="text-occium-gold text-sm font-medium hover:underline"
+                    >
+                      Set Schedule
+                    </button>
                   ) : (
-                    "Post Now"
-                  )}
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => setScheduleDate(null)}
+                      className="text-white/40 text-sm font-medium hover:text-red-400"
+                    >
+                      Cancel
+                    </button>
+                  ) }
+                </div>
+
+                {scheduleDate && collectionSource && selectedCollectionEntries.length > 1 && (
+                  <div className="mb-6 rounded-xl bg-occium-gold/5 border border-occium-gold/10 p-4">
+                    <p className="text-occium-gold text-[10px] uppercase tracking-widest font-bold mb-3 flex items-center gap-2">
+                       <Loader2 size={10} className="animate-spin" /> Batch Pipeline Timeline
+                    </p>
+                    <div className="space-y-3">
+                      {batchSchedulePreview.map((item, idx) => (
+                        <div key={item.id} className="flex items-center justify-between text-xs">
+                          <span className="text-white/60 truncate max-w-[180px]">
+                            {idx + 1}. {item.title}
+                          </span>
+                          <span className="text-occium-gold font-medium shrink-0">
+                            {format(new Date(item.publishAt), "MMM d, h:mm a")}
+                          </span>
+                        </div>
+                      ))}
+                      {selectedCollectionEntries.length > 4 && (
+                        <p className="text-white/30 text-[10px] italic pt-1 border-t border-white/5">
+                          + {selectedCollectionEntries.length - 4} more videos in the queue
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="text-white/60 text-sm flex items-center gap-2">
+                    {activeTab === "youtube" && !helperStatus.available && (
+                      <span className="flex items-center gap-1.5 text-amber-200/60 text-xs">
+                        <Loader2 size={12} className="animate-spin" /> Engine waking...
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(isSubmitting || bulkProgress.active) && (
+                      <button
+                        type="button"
+                        onClick={handleCancelActiveWork}
+                        className="px-5 py-3 rounded-full border border-white/10 bg-white/5 text-white/80 text-sm font-medium hover:bg-white/10 transition-colors"
+                      >
+                        {bulkProgress.active ? "Stop After Current" : "Cancel Request"}
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={
+                        isSubmitting ||
+                        (activeTab === "youtube" && !canUploadToYouTube) ||
+                        (activeTab === "linkedin" && !canPostToLinkedIn)
+                      }
+                      className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
+                    >
+                      {isSubmitting ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 size={16} className="animate-spin" /> Working...
+                        </span>
+                      ) : scheduleDate ? (
+                        collectionSource ? `Schedule ${selectedCollectionEntries.length || 0} Videos` : "Schedule Post"
+                      ) : activeTab === "youtube" ? (
+                        collectionSource ? `Upload ${selectedCollectionEntries.length || 0} Videos` : "Upload to YouTube"
+                      ) : (
+                        "Post Now"
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
               {activeTab === "youtube" && bulkProgress.active && (
                 <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -998,6 +1259,11 @@ const NewPost = () => {
                       Processing: {bulkProgress.currentTitle}
                     </p>
                   )}
+                  {bulkCancelRequested && (
+                    <p className="text-amber-200/80 text-xs mt-2">
+                      Cancel requested. The pipeline will stop after the current upload completes.
+                    </p>
+                  )}
                 </div>
               )}
               {activeTab === "youtube" && !helperStatus.available && (
@@ -1014,12 +1280,13 @@ const NewPost = () => {
             <h3 className="text-lg font-medium text-white mb-6 flex items-center gap-2">
               <CalendarIcon size={18} /> Schedule
             </h3>
-            <div className="bg-black/20 rounded-xl p-2 mb-4">
+            <div className="calendar-shell mb-4">
               <DayPicker
                 mode="single"
                 selected={scheduleDate}
                 onSelect={setScheduleDate}
-                className="text-white mx-auto"
+                className="rdp-occium text-white mx-auto"
+                showOutsideDays
                 modifiersClassNames={{
                   selected: "bg-occium-gold text-black rounded-full font-bold",
                 }}
@@ -1099,17 +1366,19 @@ const NewPost = () => {
 
           {activeTab === "youtube" && (
             <GlassCard>
-              <h3 className="text-lg font-medium text-white mb-4">YouTube Import Flow</h3>
-              <div className="space-y-3 text-sm text-white/45">
-                <p>1. Connect the destination channel from the Accounts page.</p>
-                <p>2. Start the Python helper on your machine.</p>
-                <p>3. Paste a single video, playlist, or channel URL.</p>
-                <p>4. Pick the exact videos you want to publish.</p>
-                <p>5. Apply privacy, tags, and an optional schedule interval.</p>
-                <p>6. The helper downloads and uploads each selected video to the connected channel.</p>
-              </div>
-              <div className="mt-5 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/75 font-mono break-all">
-                {HELPER_BOOT_COMMAND}
+              <h3 className="text-lg font-medium text-white mb-4">Pipeline Status</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${helperStatus.available ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 animate-pulse'}`} />
+                  <span className="text-sm text-white/60">
+                    {helperStatus.available ? 'Render Helper Active' : 'Helper Spinning Up...'}
+                  </span>
+                </div>
+                <div className="space-y-2 text-xs text-white/30 leading-relaxed">
+                  <p>• YouTube downloads are handled via Render Cloud.</p>
+                  <p>• Scheduled videos stay on Google servers until release.</p>
+                  <p>• Local helper.bat is no longer required.</p>
+                </div>
               </div>
               {youtubeAccounts.length === 0 && (
                 <RouterLink

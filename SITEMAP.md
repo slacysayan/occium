@@ -1,19 +1,20 @@
-# Occium Sitemap
+# Occium Content System Sitemap
 
-## Public Landing & Legal
-- `/` - Landing Page (Momentum & Features)
-- `/privacy` - Privacy Policy (Google Verified)
-- `/terms` - Terms of Service
-- `/connect` - LinkedIn OAuth Callback Handler
+### 1. Internal Application Paths (Vercel Frontend)
+- `/` - **Dashboard**: Core analytics, LinkedIn pulse, and scheduled post queue.
+- `/new` - **Composer**: Interactive YouTube importer and LinkedIn ghostwriter. Supports bulk batching.
+- `/posts` - **Library**: History of all sent and scheduled posts.
+- `/accounts` - **Connections**: OAuth status for Google (YouTube) and LinkedIn.
+- `/settings` - **Engine Control**: Manual status checks and health monitoring for the Helper Engine.
 
-## Application Workspace (Auth Required)
-- `/dashboard` - Visual Dashboard & Channel Insights
-- `/new` - Content Drafting & YouTube Video Analysis
-- `/accounts` - Google & LinkedIn Account Management
-- `/queue` - Scheduling & Analysis History Task List
-- `/settings` - API Keys, Custom Branding, & Production Helper Status
+### 2. Legal & Public Documentation (Static)
+- `/terms.html` - **Terms of Service**: Legal agreement for Google and LinkedIn API usage.
+- `/privacy.html` - **Privacy Policy**: Disclosure on data handling and OAuth scope usage.
+- `/EMAIL.md` - **Project Brief**: High-level summary of the Occium production goals.
+- `/README.md` - **Production Guide**: Deployment and environment instructions for developers.
 
-## Technical Architecture
-- **Helper Engine** - `https://occium-yt-dlp-host.onrender.com` (Hardcoded Production Link)
-- **Frontend** - Hosted on Vercel
-- **Storage** - Managed via LocalStorage for API Keys & Workspace Settings
+### 3. API & Service Infrastructure (Render Python Engine)
+- `https://occium-yt-dlp-host.onrender.com/health` - Health check.
+- `https://occium-yt-dlp-host.onrender.com/api/youtube/source` - Playlist/Channel inspector.
+- `https://occium-yt-dlp-host.onrender.com/api/youtube/upload` - Secure download-and-upload handoff.
+- `https://occium-yt-dlp-host.onrender.com/api/linkedin/post` - LinkedIn distribution proxy.

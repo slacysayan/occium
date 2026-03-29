@@ -11,14 +11,22 @@ import { toast } from "sonner";
 import { appEnv } from "../config/env";
 import {
   connectYouTubeAccountFromGoogle,
+  exchangeGoogleCode,
   ensureLocalSession,
   resetLocalUser,
-  connectLinkedInAccount,
 } from "../lib/localApp";
 
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
+
+function createOAuthState() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `linkedin_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
   const [user, setUser] = useState(null);
@@ -42,16 +50,21 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
     return result;
   };
 
-  const connectLocalLinkedInAccount = async () => {
-    // Implementing the requested direct connection for Sayan Chowdhury
-    const result = connectLinkedInAccount({
-      account_name: "Sayan Chowdhury",
-      linkedin_id: "sayanchowdhuryai",
-      profile_picture: null, // Default to mark
-      connection_mode: "direct",
-    });
-    refreshSession();
-    return result;
+  const connectLinkedInAccount = async () => {
+    if (!appEnv.linkedinClientId) {
+      throw new Error(
+        "LinkedIn OAuth is not configured on this deployment. Add REACT_APP_LINKEDIN_CLIENT_ID in Vercel and redeploy.",
+      );
+    }
+
+    const redirectUri = `${window.location.origin}/connect`;
+    const scope = "openid profile email w_member_social";
+    const state = createOAuthState();
+
+    window.sessionStorage.setItem("occium.linkedin.oauth.state", state);
+
+    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${appEnv.linkedinClientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
+    window.location.href = authUrl;
   };
 
   const loginAsDemo = () => {
@@ -75,7 +88,7 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
         loginAsDemo,
         logout,
         connectYouTubeAccount,
-        connectLinkedInAccount: connectLocalLinkedInAccount,
+        connectLinkedInAccount,
         refreshSession,
       }}
     >
@@ -112,11 +125,16 @@ const GoogleAuthProvider = ({ children }) => {
   };
 
   const googleLogin = useGoogleLogin({
-    flow: "implicit",
+    flow: "auth-code",
+    prompt: "select_account consent",
+    access_type: "offline",
+    ux_mode: "popup",
     scope:
       "openid profile email https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
-    onSuccess: async (tokenResponse) => {
+    onSuccess: async (codeResponse) => {
       try {
+        const redirectUri = window.location.origin;
+        const tokenResponse = await exchangeGoogleCode(codeResponse.code, redirectUri);
         const headers = {
           Authorization: `Bearer ${tokenResponse.access_token}`,
         };
@@ -145,6 +163,7 @@ const GoogleAuthProvider = ({ children }) => {
           googleProfile,
           channelProfile,
           accessToken: tokenResponse.access_token,
+          refreshToken: tokenResponse.refresh_token,
           expiresIn: tokenResponse.expires_in,
           scope: tokenResponse.scope,
         });

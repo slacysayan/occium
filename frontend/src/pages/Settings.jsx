@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { appEnv } from "../config/env";
 import { getLocalHelperStatus } from "../lib/localApp";
 
 /* ─────────────────────────────────────────────
@@ -101,7 +102,7 @@ const TABS = [
   { id: "overview", label: "Overview", icon: Globe },
   { id: "api_keys", label: "API Keys", icon: Key },
   { id: "integrations", label: "Integrations", icon: Plug },
-  { id: "helper", label: "Local Helper", icon: Server },
+  { id: "helper", label: "Render Engine", icon: Server },
   { id: "tasks", label: "Download Tasks", icon: Download },
 ];
 
@@ -186,7 +187,7 @@ const Settings = () => {
       <div>
         <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Settings</h1>
         <p className="text-white/40 font-light">
-          Configure your workspace, API keys, and local pipeline.
+          Configure your workspace, API references, and Render-backed pipeline.
         </p>
       </div>
 
@@ -263,13 +264,8 @@ const Settings = () => {
                   helperLoading={helperLoading}
                   helperCheckedAt={helperCheckedAt}
                   refreshHelperStatus={refreshHelperStatus}
-                  helperUrlDraft={helperUrlDraft}
-                  setHelperUrlDraft={setHelperUrlDraft}
                   testingHelper={testingHelper}
                   testHelperUrl={testHelperUrl}
-                  onSave={(url) =>
-                    saveSettings({ helperUrl: url })
-                  }
                 />
               )}
 
@@ -582,8 +578,9 @@ const IntegrationsTab = ({ youtubeAccounts, linkedinAccounts, settings }) => {
         "Go to developer.linkedin.com and create an app",
         "Add 'Sign In with LinkedIn using OpenID Connect' product",
         "Add 'Share on LinkedIn' product",
-        "Copy Client ID & Secret to the API Keys tab",
-        "LinkedIn OAuth is handled locally — no server needed",
+        "Set REACT_APP_LINKEDIN_CLIENT_ID in Vercel",
+        "Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET in Render",
+        "Connect your live profile from the Accounts page",
       ],
       cost: "$0 — LinkedIn API is free for personal use (rate limits apply)",
       status: linkedinAccounts.length > 0 ? "connected" : "disconnected",
@@ -747,15 +744,12 @@ const HelperTab = ({
   helperLoading,
   helperCheckedAt,
   refreshHelperStatus,
-  helperUrlDraft,
-  setHelperUrlDraft,
   testingHelper,
   testHelperUrl,
-  onSave,
 }) => (
   <div className="space-y-6">
     <GlassCard>
-      <SectionHeader icon={Server} title="Python Helper" subtitle="Runs locally on your machine. Handles yt-dlp downloads and YouTube API uploads." />
+      <SectionHeader icon={Server} title="Render Helper" subtitle="Cloud engine for yt-dlp inspection, YouTube uploads, LinkedIn posting, and LinkedIn scheduling." />
 
       {/* Status */}
       <div
@@ -772,7 +766,7 @@ const HelperTab = ({
         )}
         <div className="flex-1">
           <p className="text-white font-medium text-sm">
-            {helperStatus.available ? "Helper is online" : "Helper is offline"}
+            {helperStatus.available ? "Render engine is online" : "Render engine is offline"}
           </p>
           {helperStatus.available && helperStatus.ytDlp && (
             <p className="text-white/50 text-xs mt-1">
@@ -796,21 +790,20 @@ const HelperTab = ({
 
     </GlassCard>
 
-    {/* Launch instructions */}
     <GlassCard>
       <h3 className="text-white font-medium mb-4 flex items-center gap-2">
-        <Terminal size={16} className="text-white/40" /> Start the Helper
+        <Terminal size={16} className="text-white/40" /> Deployment Contract
       </h3>
       <div className="space-y-3">
         <div className="p-3 bg-black/40 rounded-xl border border-white/10">
-          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Windows (one-click)</p>
-          <code className="text-white text-sm font-mono">start-helper.bat</code>
+          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Vercel</p>
+          <code className="text-white text-sm font-mono">REACT_APP_LOCAL_HELPER_URL={appEnv.localHelperUrl}</code>
         </div>
         <div className="p-3 bg-black/40 rounded-xl border border-white/10">
-          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Manual (any OS)</p>
+          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Render</p>
           <code className="text-white/80 text-xs font-mono block leading-relaxed">
-            python -m pip install -r local-helper/requirements.txt<br />
-            python local-helper/server.py
+            LINKEDIN_CLIENT_ID=&lt;linkedin client id&gt;<br />
+            LINKEDIN_CLIENT_SECRET=&lt;linkedin client secret&gt;
           </code>
         </div>
       </div>

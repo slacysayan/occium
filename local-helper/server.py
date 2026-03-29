@@ -1,31 +1,50 @@
+import json
 import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import requests
 import uvicorn
 import yt_dlp
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from pydantic import BaseModel, Field
-import requests
-from dotenv import load_dotenv
 
 load_dotenv()
 
 
 PORT = int(os.getenv("PORT", "4315"))
+REQUEST_TIMEOUT_SECONDS = 30
+SCHEDULER_POLL_INTERVAL_SECONDS = 15
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
+LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
+LINKEDIN_SCHEDULE_FILE = Path(
+    os.getenv("LINKEDIN_SCHEDULE_FILE")
+    or (Path(__file__).resolve().parent / "scheduled_linkedin_jobs.json")
+)
 YTDLP_VERSION = (
     getattr(getattr(yt_dlp, "version", None), "__version__", None)
     or getattr(yt_dlp, "__version__", "unknown")
 )
 
-app = FastAPI(title="Occium Python Helper", version="1.0.0")
+linkedin_schedule_lock = threading.Lock()
+linkedin_schedule_jobs: dict[str, dict[str, Any]] = {}
+linkedin_scheduler_started = False
+
+app = FastAPI(title="Occium Python Helper", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,15 +71,26 @@ class UploadPayload(BaseModel):
     channelId: str | None = None
 
 
+class GoogleTokenPayload(BaseModel):
+    code: str
+    redirectUri: str
+
+
+class GoogleRefreshPayload(BaseModel):
+    refreshToken: str
+
+
 class LinkedInTokenPayload(BaseModel):
     code: str
     redirectUri: str
-    clientId: str
-    clientSecret: str
 
 
 class LinkedInProfilePayload(BaseModel):
     accessToken: str
+
+
+class LinkedInRefreshPayload(BaseModel):
+    refreshToken: str
 
 
 class LinkedInPostPayload(BaseModel):
@@ -69,6 +99,10 @@ class LinkedInPostPayload(BaseModel):
     text: str
     linkUrl: str | None = None
     linkTitle: str | None = None
+
+
+class LinkedInSchedulePayload(LinkedInPostPayload):
+    publishAt: str
 
 
 def build_ydl(options: dict[str, Any] | None = None) -> yt_dlp.YoutubeDL:
@@ -212,7 +246,12 @@ def download_video(url: str) -> tuple[Path, Path]:
             file_path = Path(candidate)
 
     if not file_path:
-        prepared = info.get("_filename") or out_template.replace("%(id)s", str(info.get("id", "video"))).replace("%(ext)s", str(info.get("ext", "mp4")))
+        prepared = (
+            info.get("_filename")
+            or out_template.replace("%(id)s", str(info.get("id", "video"))).replace(
+                "%(ext)s", str(info.get("ext", "mp4"))
+            )
+        )
         file_path = Path(prepared)
 
     if not file_path.exists():
@@ -260,8 +299,253 @@ def upload_to_youtube(payload: UploadPayload, file_path: Path) -> dict[str, Any]
     }
 
 
+def ensure_linkedin_oauth_configured() -> None:
+    if not LINKEDIN_CLIENT_ID or not LINKEDIN_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "LinkedIn OAuth is not configured on the Render helper. "
+                "Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET."
+            ),
+        )
+
+
+def ensure_google_oauth_configured() -> None:
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Google OAuth is not configured on the Render helper. "
+                "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+            ),
+        )
+
+
+def parse_iso_datetime(value: str) -> datetime:
+    try:
+        normalized = value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="publishAt must be a valid ISO 8601 timestamp.") from error
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
+
+
+def serialize_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def load_linkedin_schedule_jobs() -> None:
+    global linkedin_schedule_jobs
+
+    if not LINKEDIN_SCHEDULE_FILE.exists():
+        linkedin_schedule_jobs = {}
+        return
+
+    try:
+        raw = json.loads(LINKEDIN_SCHEDULE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        linkedin_schedule_jobs = {}
+        return
+
+    if not isinstance(raw, list):
+        linkedin_schedule_jobs = {}
+        return
+
+    linkedin_schedule_jobs = {
+        str(job.get("id")): job
+        for job in raw
+        if isinstance(job, dict) and job.get("id")
+    }
+
+
+def persist_linkedin_schedule_jobs() -> None:
+    LINKEDIN_SCHEDULE_FILE.write_text(
+        json.dumps(list(linkedin_schedule_jobs.values()), indent=2),
+        encoding="utf-8",
+    )
+
+
+def sanitize_linkedin_job(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in job.items()
+        if key not in {"accessToken"}
+    }
+
+
+def upsert_linkedin_job(job: dict[str, Any]) -> dict[str, Any]:
+    with linkedin_schedule_lock:
+        linkedin_schedule_jobs[job["id"]] = job
+        persist_linkedin_schedule_jobs()
+        return sanitize_linkedin_job(job)
+
+
+def update_linkedin_job(job_id: str, **patch: Any) -> dict[str, Any] | None:
+    with linkedin_schedule_lock:
+        existing = linkedin_schedule_jobs.get(job_id)
+        if not existing:
+            return None
+
+        existing.update(patch)
+        linkedin_schedule_jobs[job_id] = existing
+        persist_linkedin_schedule_jobs()
+        return sanitize_linkedin_job(existing)
+
+
+def build_linkedin_share_body(
+    author_id: str,
+    text: str,
+    link_url: str | None = None,
+    link_title: str | None = None,
+) -> dict[str, Any]:
+    body = {
+        "author": f"urn:li:person:{author_id}",
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": text},
+                "shareMediaCategory": "ARTICLE" if link_url else "NONE",
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        },
+    }
+
+    if link_url:
+        media = {
+            "status": "READY",
+            "originalUrl": link_url,
+        }
+        if link_title:
+            media["title"] = {"text": link_title}
+            media["description"] = {"text": link_title}
+
+        body["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [media]
+
+    return body
+
+
+def publish_linkedin_share(
+    access_token: str,
+    author_id: str,
+    text: str,
+    link_url: str | None = None,
+    link_title: str | None = None,
+) -> dict[str, Any]:
+    url = "https://api.linkedin.com/v2/ugcPosts"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json",
+    }
+    body = build_linkedin_share_body(author_id, text, link_url, link_title)
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=body,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+
+    response_payload: dict[str, Any] | None = None
+    if response.text:
+        try:
+            response_payload = response.json()
+        except ValueError:
+            response_payload = None
+
+    return {
+        "postId": response.headers.get("X-RestLi-Id"),
+        "postedAt": serialize_datetime(datetime.now(timezone.utc)),
+        "response": response_payload,
+    }
+
+
+def linkedin_scheduler_loop() -> None:
+    while True:
+        due_jobs: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc)
+
+        with linkedin_schedule_lock:
+            for job in linkedin_schedule_jobs.values():
+                if job.get("status") != "scheduled":
+                    continue
+
+                publish_at = parse_iso_datetime(str(job["publishAt"]))
+                if publish_at > now:
+                    continue
+
+                job["status"] = "running"
+                job["startedAt"] = serialize_datetime(now)
+                due_jobs.append(dict(job))
+
+            if due_jobs:
+                persist_linkedin_schedule_jobs()
+
+        for job in due_jobs:
+            try:
+                result = publish_linkedin_share(
+                    access_token=str(job["accessToken"]),
+                    author_id=str(job["authorId"]),
+                    text=str(job["text"]),
+                    link_url=job.get("linkUrl"),
+                    link_title=job.get("linkTitle"),
+                )
+                update_linkedin_job(
+                    str(job["id"]),
+                    status="completed",
+                    completedAt=serialize_datetime(datetime.now(timezone.utc)),
+                    postId=result.get("postId"),
+                    error=None,
+                )
+            except HTTPException as error:
+                update_linkedin_job(
+                    str(job["id"]),
+                    status="failed",
+                    completedAt=serialize_datetime(datetime.now(timezone.utc)),
+                    error=str(error.detail),
+                )
+            except Exception as error:  # noqa: BLE001
+                update_linkedin_job(
+                    str(job["id"]),
+                    status="failed",
+                    completedAt=serialize_datetime(datetime.now(timezone.utc)),
+                    error=str(error) or "LinkedIn schedule execution failed.",
+                )
+
+        time.sleep(SCHEDULER_POLL_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    global linkedin_scheduler_started
+
+    load_linkedin_schedule_jobs()
+
+    if linkedin_scheduler_started:
+        return
+
+    thread = threading.Thread(target=linkedin_scheduler_loop, daemon=True)
+    thread.start()
+    linkedin_scheduler_started = True
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
+    with linkedin_schedule_lock:
+        pending_jobs = sum(
+            1 for job in linkedin_schedule_jobs.values() if job.get("status") == "scheduled"
+        )
+
     return {
         "status": "ok",
         "service": "occium-python-helper",
@@ -270,6 +554,13 @@ def health() -> dict[str, Any]:
         "ytDlp": {
             "available": True,
             "version": YTDLP_VERSION,
+        },
+        "linkedin": {
+            "oauthConfigured": bool(LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET),
+            "pendingScheduledJobs": pending_jobs,
+        },
+        "google": {
+            "oauthConfigured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
         },
     }
 
@@ -301,18 +592,70 @@ def youtube_upload(payload: UploadPayload) -> dict[str, Any]:
         cleanup_download(temp_dir)
 
 
+@app.post("/api/google/token")
+def google_token(payload: GoogleTokenPayload) -> dict[str, Any]:
+    ensure_google_oauth_configured()
+
+    url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": payload.code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": payload.redirectUri,
+        "grant_type": "authorization_code",
+    }
+    response = requests.post(
+        url,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
+
+@app.post("/api/google/refresh")
+def google_refresh(payload: GoogleRefreshPayload) -> dict[str, Any]:
+    ensure_google_oauth_configured()
+
+    url = "https://oauth2.googleapis.com/token"
+    data = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": payload.refreshToken,
+        "grant_type": "refresh_token",
+    }
+    response = requests.post(
+        url,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
+
 @app.post("/api/linkedin/token")
 def linkedin_token(payload: LinkedInTokenPayload) -> dict[str, Any]:
+    ensure_linkedin_oauth_configured()
+
     url = "https://www.linkedin.com/oauth/v2/accessToken"
     data = {
         "grant_type": "authorization_code",
         "code": payload.code,
         "redirect_uri": payload.redirectUri,
-        "client_id": payload.clientId,
-        "client_secret": payload.clientSecret,
+        "client_id": LINKEDIN_CLIENT_ID,
+        "client_secret": LINKEDIN_CLIENT_SECRET,
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    response = requests.post(url, data=data, headers=headers)
+    response = requests.post(
+        url,
+        data=data,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
     if not response.ok:
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
@@ -322,7 +665,30 @@ def linkedin_token(payload: LinkedInTokenPayload) -> dict[str, Any]:
 def linkedin_profile(payload: LinkedInProfilePayload) -> dict[str, Any]:
     url = "https://api.linkedin.com/v2/userinfo"
     headers = {"Authorization": f"Bearer {payload.accessToken}"}
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
+
+@app.post("/api/linkedin/refresh")
+def linkedin_refresh(payload: LinkedInRefreshPayload) -> dict[str, Any]:
+    ensure_linkedin_oauth_configured()
+
+    url = "https://www.linkedin.com/oauth/v2/accessToken"
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": payload.refreshToken,
+        "client_id": LINKEDIN_CLIENT_ID,
+        "client_secret": LINKEDIN_CLIENT_SECRET,
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    response = requests.post(
+        url,
+        data=data,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
     if not response.ok:
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
@@ -330,42 +696,53 @@ def linkedin_profile(payload: LinkedInProfilePayload) -> dict[str, Any]:
 
 @app.post("/api/linkedin/post")
 def linkedin_post(payload: LinkedInPostPayload) -> dict[str, Any]:
-    url = "https://api.linkedin.com/v2/ugcPosts"
-    headers = {
-        "Authorization": f"Bearer {payload.accessToken}",
-        "X-Restli-Protocol-Version": "2.0.0",
-        "Content-Type": "application/json",
+    return publish_linkedin_share(
+        access_token=payload.accessToken,
+        author_id=payload.authorId,
+        text=payload.text,
+        link_url=payload.linkUrl,
+        link_title=payload.linkTitle,
+    )
+
+
+@app.post("/api/linkedin/schedule")
+def linkedin_schedule(payload: LinkedInSchedulePayload) -> dict[str, Any]:
+    publish_at = parse_iso_datetime(payload.publishAt)
+    if publish_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="publishAt must be in the future.")
+
+    job = {
+        "id": f"linkedin_{uuid.uuid4().hex}",
+        "status": "scheduled",
+        "publishAt": serialize_datetime(publish_at),
+        "createdAt": serialize_datetime(datetime.now(timezone.utc)),
+        "startedAt": None,
+        "completedAt": None,
+        "postId": None,
+        "error": None,
+        "authorId": payload.authorId,
+        "text": payload.text,
+        "linkUrl": payload.linkUrl,
+        "linkTitle": payload.linkTitle,
+        "accessToken": payload.accessToken,
     }
-    
-    author_urn = f"urn:li:person:{payload.authorId}"
-    body = {
-        "author": author_urn,
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": payload.text},
-                "shareMediaCategory": "ARTICLE" if payload.linkUrl else "NONE",
-            }
-        },
-        "visibility": {
-            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-        }
-    }
-    
-    if payload.linkUrl:
-        body["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
-            {
-                "status": "READY",
-                "description": {"text": payload.linkTitle or "View on YouTube"},
-                "originalUrl": payload.linkUrl,
-            }
+
+    return upsert_linkedin_job(job)
+
+
+@app.get("/api/linkedin/schedules")
+def linkedin_schedules() -> dict[str, Any]:
+    with linkedin_schedule_lock:
+        jobs = [
+            sanitize_linkedin_job(job)
+            for job in sorted(
+                linkedin_schedule_jobs.values(),
+                key=lambda item: item.get("publishAt") or "",
+            )
         ]
-        
-    response = requests.post(url, headers=headers, json=body)
-    if not response.ok:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+
+    return {"jobs": jobs}
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")

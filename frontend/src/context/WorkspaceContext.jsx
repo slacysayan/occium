@@ -8,6 +8,7 @@ import React, {
 import { useAuth } from "./AuthContext";
 import {
   getLocalHelperStatus,
+  syncLinkedInScheduledPosts,
   getWorkspaceState,
   subscribeToWorkspaceState,
 } from "../lib/localApp";
@@ -74,6 +75,12 @@ export const WorkspaceProvider = ({ children }) => {
 
       setHelperStatus(nextStatus);
       setHelperCheckedAt(new Date().toISOString());
+
+      if (nextStatus.available) {
+        await syncLinkedInScheduledPosts().catch((error) => {
+          console.error("Failed to sync LinkedIn scheduled posts", error);
+        });
+      }
     };
 
     pollHelper();

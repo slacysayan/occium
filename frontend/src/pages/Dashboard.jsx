@@ -13,6 +13,10 @@ import {
   PlayCircle,
   TrendingUp,
 } from "lucide-react";
+import { DayPicker } from "react-day-picker";
+import { motion } from "framer-motion";
+import { isSameDay, parseISO } from "date-fns";
+import "react-day-picker/style.css";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { useWorkspace } from "../context/WorkspaceContext";
@@ -131,260 +135,340 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <SummaryCard 
           icon={Link2} 
-          label="Connected" 
+          label="Connections" 
           value={stats.connectedAccounts} 
-          detail="Accounts ready" 
-          status={stats.connectedAccounts === 0 ? "danger" : undefined}
+          detail="Active endpoints" 
+          status={stats.connectedAccounts === 0 ? "danger" : "success"}
         />
-        <SummaryCard icon={FileText} label="Drafts" value={stats.drafts} detail="Posts to refine" />
-        <SummaryCard icon={Clock3} label="Scheduled" value={stats.scheduled} detail="Queued to go out" />
-        <SummaryCard icon={CheckCircle2} label="Published" value={stats.published} detail="Already completed" />
+        <SummaryCard icon={FileText} label="Drafts" value={stats.drafts} detail="Content to refine" />
+        <SummaryCard icon={Clock3} label="Scheduled" value={stats.scheduled} detail="Upcoming releases" status={stats.scheduled > 0 ? "warning" : undefined} />
+        <SummaryCard icon={CheckCircle2} label="Published" value={stats.published} detail="Total reach" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.15fr,0.85fr] gap-8">
-        <GlassCard className="space-y-8" delay={0.1}>
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Bridge The Gap</p>
-              <h2 className="text-3xl font-light text-white tracking-tight">Simple funnel to first momentum</h2>
+      {/* Hero Section: Progress & Next Move */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <GlassCard className="xl:col-span-2 relative overflow-hidden group" delay={0.1}>
+          <div className="absolute -right-20 -top-20 w-64 h-64 bg-occium-gold/5 rounded-full blur-3xl group-hover:bg-occium-gold/10 transition-colors duration-1000" />
+          
+          <div className="flex flex-col h-full">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-8">
+              <div>
+                <p className="text-occium-gold text-xs uppercase tracking-[0.3em] font-bold mb-2">Onboarding Roadmap</p>
+                <h2 className="text-3xl font-light text-white tracking-tight">System Momentum</h2>
+              </div>
+              <div className="text-sm font-mono text-white/40">
+                <span className="text-white font-bold">{completedSteps}</span>
+                <span className="mx-1">/</span>
+                {funnelSteps.length} COMPLETE
+              </div>
             </div>
-            <div className="text-sm text-white/50">
-              {completedSteps}/{funnelSteps.length} complete
+
+            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-10">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(completedSteps / funnelSteps.length) * 100}%` }}
+                className="h-full bg-gradient-to-r from-occium-gold/40 to-occium-gold shadow-[0_0_15px_rgba(212,175,55,0.4)]"
+                transition={{ duration: 1, ease: "easeOut" }}
+              />
             </div>
-          </div>
 
-          <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-            <div
-              className="h-full bg-occium-gold transition-all duration-500"
-              style={{ width: `${(completedSteps / funnelSteps.length) * 100}%` }}
-            />
-          </div>
-
-          <div className="space-y-4">
-            {funnelSteps.map((step, index) => {
-              const Icon = step.icon;
-
-              return (
-                <div
-                  key={step.title}
-                  className={`rounded-2xl border p-5 transition-colors ${
-                    step.done ? "border-emerald-400/20 bg-emerald-500/5" : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center ${
-                        step.done ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white"
-                      }`}
-                    >
-                      {step.done ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+              {funnelSteps.map((step, index) => {
+                const Icon = step.icon;
+                return (
+                  <Link
+                    key={step.title}
+                    to={step.href}
+                    className={`group/step relative p-5 rounded-2xl border transition-all duration-300 ${
+                      step.done 
+                        ? "border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10" 
+                        : "border-white/5 bg-white/[0.02] hover:bg-white/5 hover:border-white/10"
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover/step:scale-110 ${
+                      step.done ? "bg-emerald-500/20 text-emerald-400" : "bg-white/5 text-white/40"
+                    }`}>
+                      {step.done ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Step {index + 1}</p>
-                          <h3 className="text-xl text-white font-medium">{step.title}</h3>
-                        </div>
-                        <span className={`text-xs uppercase tracking-[0.18em] ${step.done ? "text-emerald-300" : "text-white/35"}`}>
-                          {step.done ? "Complete" : "Pending"}
-                        </span>
-                      </div>
-                      <p className="text-white/45 text-sm mt-3 max-w-2xl">{step.description}</p>
-                      <Link
-                        to={step.href}
-                        className="inline-flex items-center gap-2 text-sm text-occium-gold hover:text-white transition-colors mt-4"
-                      >
-                        {step.action} <ArrowRight size={14} />
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                    <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ${step.done ? "text-emerald-400/80" : "text-white"}`}>
+                      {step.title}
+                    </h3>
+                    <p className="text-white/40 text-xs leading-relaxed line-clamp-2 italic">
+                      {step.description}
+                    </p>
+                    {step.done && (
+                      <div className="absolute top-4 right-4 text-[10px] font-bold text-emerald-400/50">OK</div>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         </GlassCard>
 
-        <div className="space-y-8">
-          <GlassCard delay={0.15}>
-            <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Next Move</p>
-            <h2 className="text-2xl font-light text-white tracking-tight">{nextStep.title}</h2>
-            <p className="text-white/45 text-sm mt-3">{nextStep.description}</p>
+        <GlassCard className="relative flex flex-col justify-between border-occium-gold/20" delay={0.15}>
+          <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+            <TrendingUp size={120} />
+          </div>
+          
+          <div>
+            <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-2">Priority Action</p>
+            <h2 className="text-2xl font-light text-white tracking-tight leading-tight">{nextStep.title}</h2>
+            <p className="text-white/40 text-sm mt-4 leading-relaxed font-light">
+              {nextStep.description}
+            </p>
+          </div>
+
+          <div className="mt-10">
             <Link
               to={nextStep.href}
-              className="inline-flex items-center gap-2 bg-white text-black px-5 py-3 rounded-full font-medium hover:scale-105 transition-transform mt-6"
+              className="group flex items-center justify-between bg-white text-black pl-6 pr-2 py-2 rounded-full font-bold text-sm transition-all hover:scale-[1.02] active:scale-95"
             >
-              {nextStep.action} <ArrowRight size={16} />
+              <span>{nextStep.action}</span>
+              <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                <ArrowRight size={14} />
+              </div>
             </Link>
-          </GlassCard>
+          </div>
+        </GlassCard>
+      </div>
 
-          <GlassCard delay={0.18}>
-            <div className="flex items-end justify-between gap-4 mb-6">
-              <div>
-                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">YouTube Pulse</p>
-                <h2 className="text-2xl font-light text-white tracking-tight">Channel performance</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          <ScheduleCard />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <GlassCard delay={0.2}>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Queue Preview</p>
+                  <h2 className="text-xl font-light text-white tracking-tight">In Motion</h2>
+                </div>
+                <Link to={workspaceRoutes.queue} className="text-[10px] font-bold text-occium-gold hover:text-white uppercase tracking-widest transition-colors">
+                  View All
+                </Link>
               </div>
-              {connectedYouTubeAccount && (
-                <span className={`text-[10px] uppercase tracking-[0.18em] ${
-                  tokenHealth.status === "healthy"
-                    ? "text-emerald-300"
-                    : tokenHealth.status === "expiring"
-                      ? "text-amber-200"
-                      : "text-rose-300"
-                }`}>
-                  {formatTokenHealth(tokenHealth)}
-                </span>
-              )}
-            </div>
 
-            {analyticsLoading ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-white/45 text-sm">
-                Loading connected channel analytics...
-              </div>
-            ) : youtubeAnalytics ? (
-              <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                  {youtubeAnalytics.thumbnail ? (
-                    <img
-                      src={youtubeAnalytics.thumbnail}
-                      alt=""
-                      className="w-14 h-14 rounded-2xl object-cover border border-white/10"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-white font-medium line-clamp-1">{youtubeAnalytics.title}</p>
-                    <p className="text-white/35 text-sm mt-1">Live stats and recent upload momentum from the connected channel.</p>
-                  </div>
+              {posts.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/5 p-8 text-center bg-white/[0.01]">
+                  <p className="text-white/20 text-xs tracking-widest uppercase">No active pipeline</p>
                 </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <AnalyticsStat label="Subscribers" value={formatCompactNumber(youtubeAnalytics.subscribers)} />
-                  <AnalyticsStat label="Views" value={formatCompactNumber(youtubeAnalytics.views)} />
-                  <AnalyticsStat label="Videos" value={formatCompactNumber(youtubeAnalytics.videos)} />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <PerformanceMetric
-                    icon={TrendingUp}
-                    label="Recent Avg Views"
-                    value={formatCompactNumber(Math.round(youtubeAnalytics.recentAverageViews || 0))}
-                  />
-                  <PerformanceMetric
-                    icon={CalendarClock}
-                    label="Upload Cadence"
-                    value={youtubeAnalytics.cadenceDays ? `${youtubeAnalytics.cadenceDays.toFixed(1)} days` : "Need more uploads"}
-                  />
-                  <PerformanceMetric
-                    icon={Flame}
-                    label="Recent Likes"
-                    value={formatCompactNumber(youtubeAnalytics.recentTotals?.likes || 0)}
-                  />
-                </div>
-
-                {youtubeAnalytics.topVideo && (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-white/35 text-xs uppercase tracking-[0.18em] mb-2">Top Recent Video</p>
-                    <div className="flex items-start gap-4">
-                      {youtubeAnalytics.topVideo.thumbnail ? (
-                        <img
-                          src={youtubeAnalytics.topVideo.thumbnail}
-                          alt=""
-                          className="w-24 h-16 rounded-xl object-cover border border-white/10"
-                        />
-                      ) : (
-                        <div className="w-24 h-16 rounded-xl border border-white/10 bg-white/5" />
-                      )}
+              ) : (
+                <div className="space-y-4">
+                  {posts.slice(0, 3).map((post) => (
+                    <div key={post._id} className="flex items-center gap-4 group/post cursor-default">
+                      <div className={`w-1 h-10 rounded-full transition-colors ${
+                        post.status === 'scheduled' ? 'bg-occium-gold' : 'bg-white/10'
+                      }`} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-white font-medium line-clamp-2">{youtubeAnalytics.topVideo.title}</p>
-                        <p className="text-white/35 text-sm mt-2">
-                          {formatCompactNumber(youtubeAnalytics.topVideo.views)} views
-                          {youtubeAnalytics.topVideo.publishedAt
-                            ? ` · ${formatDistanceToNow(new Date(youtubeAnalytics.topVideo.publishedAt), { addSuffix: true })}`
-                            : ""}
+                        <p className="text-white text-sm font-medium line-clamp-1 group-hover/post:text-occium-gold transition-colors">
+                          {post.title || post.description || "Untitled"}
+                        </p>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider mt-1">
+                          {post.scheduled_at 
+                            ? `Release ${formatDistanceToNow(new Date(post.scheduled_at), { addSuffix: true })}` 
+                            : 'Draft Status'}
                         </p>
                       </div>
+                      <div className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        post.platform === 'youtube' ? 'text-red-400 border-red-500/20' : 'text-blue-400 border-blue-500/20'
+                      }`}>
+                        {post.platform.toUpperCase()}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Recent Uploads</p>
-                    <span className="text-white/30 text-xs">
-                      {recentUploads.length ? `Latest ${recentUploads.length} videos` : "No recent uploads"}
-                    </span>
-                  </div>
-                  {recentUploads.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 p-4 text-white/45 text-sm">
-                      Connect a channel with at least one upload to unlock recent-video tracking.
-                    </div>
-                  ) : (
-                    recentUploads.slice(0, 4).map((video) => (
-                      <RecentUploadRow key={video.id} video={video} />
-                    ))
-                  )}
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center">
-                <p className="text-white/55">No live YouTube analytics yet.</p>
-                <p className="text-white/35 text-sm mt-2">
-                  Connect a YouTube channel to surface subscribers, views, recent uploads, and upload pace here.
-                </p>
-              </div>
-            )}
-          </GlassCard>
+              )}
+            </GlassCard>
 
-          <GlassCard delay={0.2}>
-            <div className="flex items-end justify-between gap-4 mb-6">
-              <div>
-                <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">Recent Posts</p>
-                <h2 className="text-2xl font-light text-white tracking-tight">What is in motion</h2>
-              </div>
-              <Link to={workspaceRoutes.newPost} className="text-sm text-occium-gold hover:text-white transition-colors">
-                Create new
-              </Link>
-            </div>
+            <LinkedInSpotlightSection />
+          </div>
+        </div>
 
-            {posts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center">
-                <p className="text-white/55">No posts yet.</p>
-                <p className="text-white/35 text-sm mt-2">Once you create content, it will show up here instead of mock analytics.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {posts.slice(0, 5).map((post) => (
-                  <div key={post._id} className="rounded-2xl border border-white/8 bg-white/5 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <span
-                        className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded-full ${
-                          post.platform === "youtube" ? "bg-red-500/10 text-red-300" : "bg-blue-500/10 text-blue-300"
-                        }`}
-                      >
-                        {post.platform}
-                      </span>
-                      <span className="text-xs text-white/30 capitalize">{post.status}</span>
-                    </div>
-                    <p className="text-white font-medium mt-3 line-clamp-1">{post.title || post.description || "Untitled Post"}</p>
-                    <p className="text-white/35 text-xs mt-2">
-                      {post.scheduled_at
-                        ? `Scheduled for ${format(new Date(post.scheduled_at), "MMM d, h:mm a")}`
-                        : `Created ${format(new Date(post.created_at), "MMM d, h:mm a")}`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </GlassCard>
-          
-          <LinkedInSpotlightSection />
+        <div className="space-y-8">
+          <YouTubePulseSection analytics={youtubeAnalytics} loading={analyticsLoading} tokenHealth={tokenHealth} />
         </div>
       </div>
+
     </div>
+  );
+};
+
+const ScheduleCard = () => {
+  const { posts } = useWorkspace();
+  const scheduledPosts = useMemo(() => 
+    posts.filter(p => (p.status === 'scheduled' || p.status === 'published') && p.scheduled_at),
+    [posts]
+  );
+  
+  const [selectedDay, setSelectedDay] = useState(new Date());
+
+  const dayPosts = useMemo(() => 
+    scheduledPosts.filter(p => isSameDay(parseISO(p.scheduled_at), selectedDay)),
+    [scheduledPosts, selectedDay]
+  );
+
+  const modifiers = {
+    hasPost: (date) => scheduledPosts.some(p => isSameDay(parseISO(p.scheduled_at), date)),
+    published: (date) => scheduledPosts.some(p => p.status === 'published' && isSameDay(parseISO(p.scheduled_at), date))
+  };
+
+  const modifiersStyles = {
+    hasPost: {
+      color: '#D4AF37',
+      fontWeight: 'bold',
+    },
+    published: {
+      color: '#4ade80',
+    }
+  };
+
+  return (
+    <GlassCard delay={0.22} className="relative overflow-hidden !p-0">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr,320px]">
+        {/* Calendar Side */}
+        <div className="p-8 border-b md:border-b-0 md:border-r border-white/5">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <p className="text-occium-gold text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Global Calendar</p>
+              <h2 className="text-3xl font-light text-white tracking-tight leading-none">Scheduler</h2>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5">
+                <div className="w-1.5 h-1.5 rounded-full bg-occium-gold" />
+                <span className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Planned</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Live</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="calendar-shell flex justify-center">
+            <DayPicker 
+              mode="single"
+              selected={selectedDay}
+              onSelect={(day) => day && setSelectedDay(day)}
+              modifiers={modifiers}
+              modifiersStyles={modifiersStyles}
+              className="rdp-occium"
+              showOutsideDays
+            />
+          </div>
+        </div>
+
+        {/* Selected Day View */}
+        <div className="bg-white/[0.01] flex flex-col">
+          <div className="p-8 pb-4">
+            <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-2">Selected Date</p>
+            <h3 className="text-xl font-light text-white tracking-tight">
+              {format(selectedDay, "MMMM do")}
+            </h3>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-4 max-h-[400px]">
+            {dayPosts.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center py-10 opacity-30">
+                <Clock3 size={32} className="mb-4" />
+                <p className="text-xs uppercase tracking-widest leading-relaxed">No drops programmed for this slot</p>
+              </div>
+            ) : (
+              dayPosts.map((post) => (
+                <div key={post._id} className="p-4 rounded-xl bg-white/5 border border-white/5 group hover:border-occium-gold/30 transition-colors">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                     <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/5 ${
+                       post.platform === 'youtube' ? 'text-red-400' : 'text-blue-400'
+                     }`}>
+                       {post.platform}
+                     </span>
+                     <span className="text-white/30 font-mono text-[10px]">
+                       {format(parseISO(post.scheduled_at), "HH:mm")}
+                     </span>
+                  </div>
+                  <p className="text-white text-xs font-medium line-clamp-2 leading-relaxed">
+                    {post.title || post.description || "Untitled Release"}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="p-6 mt-auto border-t border-white/5 bg-white/[0.02]">
+            <Link 
+              to={workspaceRoutes.newPost}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-occium-gold text-black text-xs font-bold uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-occium-gold/20"
+            >
+              <PenSquare size={14} /> Program Drop
+            </Link>
+          </div>
+        </div>
+      </div>
+    </GlassCard>
+  );
+};
+
+const YouTubePulseSection = ({ analytics, loading, tokenHealth }) => {
+  if (loading) {
+    return (
+      <GlassCard className="h-full flex flex-col items-center justify-center p-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-occium-gold" />
+        <p className="text-white/30 text-xs mt-4 uppercase tracking-widest">Tracking pulse...</p>
+      </GlassCard>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <GlassCard className="h-full flex flex-col items-center justify-center p-12 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-white/10 mb-6">
+          <PlayCircle size={32} />
+        </div>
+        <h3 className="text-white font-light text-lg mb-2">YouTube Offline</h3>
+        <p className="text-white/30 text-xs leading-relaxed max-w-[200px]">
+          Connect your channel to unlock real-time performance tracking and audience insights.
+        </p>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <GlassCard className="h-full">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Network Pulse</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">YouTube Analytics</h2>
+        </div>
+        <div className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-2 ${
+          tokenHealth.status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+        }`}>
+          <div className={`w-1 h-1 rounded-full ${tokenHealth.status === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          {tokenHealth.status === 'healthy' ? 'Healthy' : 'Check Access'}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <PerformanceMetric icon={TrendingUp} label="Subscribers" value={analytics.subscribers || "N/A"} />
+        <PerformanceMetric icon={PlayCircle} label="Total Views" value={formatCompactNumber(analytics.views)} />
+      </div>
+
+      <div className="space-y-4">
+        <p className="text-white/25 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Recent Content</p>
+        <div className="space-y-3">
+          {analytics.recentVideos?.slice(0, 3).map((video, i) => (
+            <RecentUploadRow key={i} video={video} />
+          ))}
+          {!analytics.recentVideos?.length && (
+             <div className="p-4 rounded-xl border border-dashed border-white/5 text-center">
+               <p className="text-white/20 text-[10px] uppercase tracking-widest">No recent uploads</p>
+             </div>
+          )}
+        </div>
+      </div>
+    </GlassCard>
   );
 };
 
@@ -425,8 +509,8 @@ const LinkedInSpotlightSection = () => {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <AnalyticsStat label="Followers" value="~2.1K" />
-        <AnalyticsStat label="Posts" value="34" />
+        <AnalyticsStat label="Followers" value="~24.5K" />
+        <AnalyticsStat label="Posts" value="184" />
       </div>
 
       <div className="mt-6 pt-6 border-t border-white/5 space-y-4">
@@ -434,8 +518,8 @@ const LinkedInSpotlightSection = () => {
           <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Recent Network Activity</p>
         </div>
         <div className="rounded-2xl bg-white/5 border border-white/5 p-4 text-sm text-white/45">
-          Reach: <span className="text-emerald-400">+12% this week</span>
-          <p className="mt-1 text-xs">Engagement is trending up on recent text-first posts.</p>
+          Reach: <span className="text-emerald-400 font-bold">+48% this week</span>
+          <p className="mt-1 text-xs">Engagement is surging with recent AI-enhanced carousel-style content.</p>
         </div>
       </div>
     </GlassCard>
@@ -443,19 +527,21 @@ const LinkedInSpotlightSection = () => {
 };
 
 const AnalyticsStat = ({ label, value }) => (
-  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">{label}</p>
-    <p className="text-white text-2xl font-light mt-3">{value}</p>
+  <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+    <p className="text-white/25 text-[9px] uppercase tracking-[0.2em] font-bold mb-3">{label}</p>
+    <p className="text-white text-xl font-light tracking-tight">{value}</p>
   </div>
 );
 
 const PerformanceMetric = ({ icon: Icon, label, value }) => (
-  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-    <div className="flex items-center gap-2 text-white/35 text-xs uppercase tracking-[0.18em]">
-      <Icon size={14} />
-      {label}
+  <div className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05]">
+    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-occium-gold shrink-0">
+      <Icon size={16} />
     </div>
-    <p className="text-white text-lg font-medium mt-3">{value}</p>
+    <div className="min-w-0">
+      <p className="text-white/25 text-[9px] uppercase tracking-[0.2em] font-bold">{label}</p>
+      <p className="text-white text-sm font-medium mt-1 truncate">{value}</p>
+    </div>
   </div>
 );
 

@@ -13,6 +13,7 @@ import Accounts from "./pages/Accounts";
 import NewPost from "./pages/NewPost";
 import Queue from "./pages/Queue";
 import AIStudio from "./pages/AIStudio";
+import LinkedInCallback from "./pages/LinkedInCallback";
 import Settings from "./pages/Settings";
 import { Toaster } from "sonner";
 import { workspaceRoutes } from "./lib/routes";
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="/" element={<LandingPage />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/connect" element={<LinkedInCallback />} />
             </Route>
 
             <Route element={<WorkspaceLayout />}>

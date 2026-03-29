@@ -1,64 +1,52 @@
-# Occium Local
+# Occium: Autonomous Content Pipeline
 
-This repo now runs as a Vercel-hosted frontend plus an optional local Python helper for the YouTube import pipeline.
+Occium is a premium, localized content distribution system that automates the handoff between YouTube content and LinkedIn audience engagement.
 
-## Vercel deployment
+## Production Stack
 
-Production URL:
-`https://occium-contentsystem-linkedin-yt.vercel.app`
+- **Frontend**: [Vercel](https://occium-contentsystem-linkedin-yt.vercel.app)
+- **Engine**: [Render (occium-yt-dlp-host)](https://occium-yt-dlp-host.onrender.com)
+- **Legal**: [Privacy](https://occium-contentsystem-linkedin-yt.vercel.app/privacy.html) | [Terms](https://occium-contentsystem-linkedin-yt.vercel.app/terms.html)
 
-Vercel environment variables:
+## Deployment Configuration
 
-- `REACT_APP_GOOGLE_CLIENT_ID=65703749084-0okg8lrvfahrpb7h2chfuudsm9cgjdq0.apps.googleusercontent.com`
-- `REACT_APP_YOUTUBE_API_KEY=AIzaSyA7daPmmKShkzq2Opg-AizTXRVQ89ews0o`
-- `REACT_APP_ENABLE_GOOGLE_CONNECT=true`
-- `REACT_APP_LOCAL_HELPER_URL=http://127.0.0.1:4315`
+Set these exact environment variables in your Vercel Dashboard:
 
-## Google OAuth setup
+- `REACT_APP_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID
+- `REACT_APP_YOUTUBE_API_KEY`: Your YouTube Data API Key
+- `REACT_APP_LOCAL_HELPER_URL`: `https://occium-yt-dlp-host.onrender.com`
+- `REACT_APP_LINKEDIN_CLIENT_ID`: Your LinkedIn OAuth Client ID
+- `REACT_APP_ENABLE_GOOGLE_CONNECT`: `true`
 
-For the existing popup-based browser flow, use these exact settings in Google Cloud:
+Set these exact environment variables in your Render service:
 
-- Authorized JavaScript origins:
-  `https://occium-contentsystem-linkedin-yt.vercel.app`
-  `http://localhost:3000` if you still want local testing
-- Authorized redirect URIs:
-  none required for the current popup flow
+- `GOOGLE_CLIENT_ID`: Same value as `REACT_APP_GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`: Google OAuth Client Secret
+- `LINKEDIN_CLIENT_ID`: Same value as `REACT_APP_LINKEDIN_CLIENT_ID`
+- `LINKEDIN_CLIENT_SECRET`: LinkedIn App Client Secret
+- `PORT`: Render-provided port
 
-## Frontend run
+## OAuth Configuration
 
-1. `npm run install:frontend`
-2. Update `frontend/.env` only if you want to override defaults locally
-3. `npm start`
+Configure these values before going live:
 
-## Local Python helper run
+- Google Authorized JavaScript Origin: `https://occium-contentsystem-linkedin-yt.vercel.app`
+- Google Authorized Redirect URI: `https://occium-contentsystem-linkedin-yt.vercel.app`
+- LinkedIn Authorized Redirect URL: `https://occium-contentsystem-linkedin-yt.vercel.app/connect`
 
-1. Make sure Python 3 is available on your machine
-2. From the repo root, run `start-helper.bat`
+## Production Workflow
 
-Quick start command:
+1. **Connect**: Link your YouTube destination channel and LinkedIn profile in the **Accounts** page.
+2. **Import**: Paste a YouTube link (Video, Playlist, or Channel) in the **Composer**.
+3. **Draft**: Refine metadata, tags, and LinkedIn captions using the AI ghostwriter.
+4. **Batch**: Use the **Bulk Strategy** to set a schedule interval (e.g., 60 mins between posts).
+5. **Sync**: The Render Helper Engine securely downloads, uploads, and schedules the connected workflows.
 
-- `start-helper.bat`
+## Production Notes
 
-Manual fallback:
+- YouTube OAuth now uses server-side code exchange via Render so refresh tokens can be used for uploads and analytics.
+- LinkedIn OAuth, posting, and scheduling run through the Render helper.
+- LinkedIn scheduled jobs currently persist in the helper service filesystem. For strict durability across redeploys, move that queue to a database or other durable store before relying on long-dated schedules.
 
-- `python -m pip install -r local-helper/requirements.txt`
-- `python local-helper/server.py`
-
-The helper listens on `http://127.0.0.1:4315` and is used for:
-
-- inspecting single-video, playlist, and channel links
-- pulling video metadata via `yt-dlp`
-- downloading a source YouTube video locally
-- uploading that video to the connected destination YouTube channel
-
-The launcher creates a local virtual environment automatically and installs the Python dependencies, including `yt-dlp`.
-
-## Flow
-
-1. Connect a YouTube channel from the Accounts page
-2. Start the local Python helper
-3. Paste a single YouTube video, playlist, or channel URL in Composer
-4. Fetch the source and select the exact videos to publish
-5. Choose the connected destination channel
-6. Apply privacy, tags, and optional schedule timing or interval
-7. Hand off the download and upload to the Python helper
+---
+&copy; 2026 Occium. Developed by Antigravity AI.

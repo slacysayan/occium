@@ -15,6 +15,7 @@ const Accounts = () => {
   const [isLoading, setIsLoading] = useState(false);
   const youtubeOAuthReady = appEnv.enableGoogleConnect && Boolean(appEnv.googleClientId);
   const youtubeMetadataReady = Boolean(appEnv.youtubeApiKey);
+  const linkedinOAuthReady = Boolean(appEnv.linkedinClientId);
 
   const connectLinkedIn = async () => {
     try {
@@ -79,7 +80,7 @@ const Accounts = () => {
               </div>
               <div>
                 <h3 className="text-2xl font-medium text-white">YouTube</h3>
-                <p className="text-white/40">Video Distribution</p>
+                <p className="text-white/40">Channels, Teams & Brand Accounts</p>
               </div>
             </div>
 
@@ -108,23 +109,33 @@ const Accounts = () => {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => disconnectAccount(account._id)}
-                    className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {(getAccessTokenHealth(account).status === "expired" || getAccessTokenHealth(account).status === "expiring") && (
+                      <button
+                        onClick={connectYouTube}
+                        className="px-4 py-2 rounded-xl bg-white text-black text-[10px] font-bold uppercase tracking-wider hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10"
+                      >
+                        Reconnect Access
+                      </button>
+                    )}
+                    <button
+                      onClick={() => disconnectAccount(account._id)}
+                      className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
               ))}
 
               {accounts.filter((account) => account.platform === "youtube").length === 0 && (
-                <div className="p-4 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center py-8">
-                  <p className="text-white/30 text-sm mb-4">No channels connected</p>
+                <div className="p-4 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center py-10 bg-white/[0.01]">
+                  <p className="text-white/30 text-xs uppercase tracking-widest mb-6 leading-relaxed">No drops destinations linked</p>
                   <button
                     onClick={connectYouTube}
-                    className="flex items-center gap-2 bg-white text-black px-6 py-2 rounded-full font-medium text-sm hover:scale-105 transition-transform"
+                    className="flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-xl shadow-white/5"
                   >
-                    <Plus size={16} /> Connect Channel
+                    <Plus size={18} /> Link YouTube / Teams
                   </button>
                 </div>
               )}
@@ -197,17 +208,19 @@ const Accounts = () => {
                   <div className="flex flex-col gap-3 w-full max-w-xs">
                     <button
                       onClick={connectLinkedIn}
-                      className="flex items-center justify-center gap-3 bg-occium-gold text-black px-6 py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-all shadow-xl shadow-occium-gold/10"
+                      disabled={!linkedinOAuthReady}
+                      className="flex items-center justify-center gap-3 bg-occium-gold text-black px-6 py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-all shadow-xl shadow-occium-gold/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <img src={OCCIUM_MARK_SRC} alt="" className="w-5 h-5 object-contain" />
-                      Connect Sayan Chowdhury
+                      Connect LinkedIn OAuth
                     </button>
                     
                     <button
                       onClick={connectLinkedIn}
-                      className="flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-xs"
+                      disabled={!linkedinOAuthReady}
+                      className="flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-xs disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Plus size={12} /> Connect Custom Profile
+                      <Plus size={12} /> Re-open LinkedIn Auth
                     </button>
                   </div>
                 </div>
@@ -232,7 +245,9 @@ const Accounts = () => {
               : "No YouTube API key is present in this build, so metadata falls back to public YouTube endpoints when possible."}
           </p>
           <p className="text-white/40 text-sm mt-1">
-            LinkedIn stays browser-backed for now while YouTube is the active integration.
+            {linkedinOAuthReady
+              ? "LinkedIn OAuth is configured. Posting and Render-backed scheduling are available once your profile is connected."
+              : "LinkedIn OAuth is not configured on this deployment. Add REACT_APP_LINKEDIN_CLIENT_ID in Vercel and LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET in Render."}
           </p>
         </div>
       </div>

@@ -13,23 +13,77 @@ const Sidebar = () => {
   const { logout } = useAuth();
   const location = useLocation();
 
-  const links = [
-    { name: 'Dashboard', path: workspaceRoutes.dashboard, icon: LayoutDashboard },
-    { name: 'Accounts', path: workspaceRoutes.accounts, icon: Link2 },
-    { name: 'New Post', path: workspaceRoutes.newPost, icon: PenSquare },
-    { name: 'Queue', path: workspaceRoutes.queue, icon: Calendar },
-    { name: 'AI Studio', path: workspaceRoutes.aiStudio, icon: Sparkles },
+  const groups = [
+    {
+      label: 'Personal',
+      items: [
+        { name: 'Dashboard', path: workspaceRoutes.dashboard, icon: LayoutDashboard },
+        { name: 'Accounts', path: workspaceRoutes.accounts, icon: Link2 },
+      ]
+    },
+    {
+      label: 'Pipeline',
+      items: [
+        { name: 'New Post', path: workspaceRoutes.newPost, icon: PenSquare },
+        { name: 'Queue', path: workspaceRoutes.queue, icon: Calendar },
+      ]
+    },
+    {
+      label: 'Studio',
+      items: [
+        { name: 'AI Studio', path: workspaceRoutes.aiStudio, icon: Sparkles },
+      ]
+    }
+  ];
+
+  const secondaryLinks = [
     { name: 'Settings', path: workspaceRoutes.settings, icon: Settings },
   ];
+
+  const renderLink = (link, index) => {
+    const isActive = location.pathname === link.path;
+    return (
+      <NavLink
+        key={link.path}
+        to={link.path}
+        className="w-full"
+      >
+        {({ isActive: linkActive }) => (
+          <div className="relative group">
+              {(isActive || linkActive) && (
+                  <motion.div
+                      layoutId="activeNav"
+                      className="absolute inset-0 bg-white/10 rounded-xl"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+              )}
+              <motion.div
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.05 * index }}
+                  className={cn(
+                      "relative z-10 flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300",
+                      (isActive || linkActive) ? "text-white" : "text-white/40 group-hover:text-white"
+                  )}
+              >
+                  <link.icon size={18} strokeWidth={(isActive || linkActive) ? 2.5 : 1.5} />
+                  <span className="hidden md:block font-semibold tracking-tight text-sm">{link.name}</span>
+              </motion.div>
+          </div>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
     <motion.div 
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-      className="glass-shell w-20 md:w-72 flex-shrink-0 flex flex-col h-screen fixed left-0 top-0 z-50"
+      className="glass-shell w-20 md:w-72 flex-shrink-0 flex flex-col h-screen fixed left-0 top-0 z-50 overflow-hidden"
     >
-      <div className="p-8 flex items-center gap-4">
+      <div className="p-8 pb-4 flex items-center gap-4">
         <motion.div 
           initial={{ rotate: -180, opacity: 0 }}
           animate={{ rotate: 0, opacity: 1 }}
@@ -44,62 +98,46 @@ const Sidebar = () => {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="hidden md:flex items-center"
         >
-          <span className="text-[2.05rem] font-semibold tracking-[-0.055em] leading-none text-white">
+          <span className="text-[1.8rem] font-bold tracking-tight leading-none text-white">
             Occium
           </span>
         </motion.div>
       </div>
 
-      <nav className="flex-1 px-4 py-8 space-y-2">
-        {links.map((link, index) => {
-          const isActive = location.pathname === link.path;
-          return (
-            <NavLink
-              key={link.path}
-              to={link.path}
-            >
-              {({ isActive: linkActive }) => (
-                <div className="relative group">
-                    {(isActive || linkActive) && (
-                        <motion.div
-                            layoutId="activeNav"
-                            className="absolute inset-0 bg-white/10 rounded-xl"
-                            initial={false}
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        />
-                    )}
-                    <motion.div
-                        initial={{ x: -20, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: 0.1 * index + 0.5 }}
-                        className={cn(
-                            "relative z-10 flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300",
-                            (isActive || linkActive) ? "text-white" : "text-white/40 group-hover:text-white"
-                        )}
-                    >
-                        <link.icon size={20} strokeWidth={(isActive || linkActive) ? 2.5 : 1.5} />
-                        <span className="hidden md:block font-medium tracking-wide text-sm">{link.name}</span>
-                    </motion.div>
-                </div>
-              )}
-            </NavLink>
-          );
-        })}
-      </nav>
+      <div className="flex-1 flex flex-col justify-between overflow-y-auto px-4 py-6">
+        <nav className="space-y-10">
+          {groups.map((group, gIdx) => (
+            <div key={group.label} className="space-y-3">
+              <p className="px-4 text-[10px] uppercase tracking-[0.3em] text-white/20 font-black">{group.label}</p>
+              <div className="space-y-1">
+                {group.items.map((link, i) => renderLink(link, i + gIdx * 10))}
+              </div>
+            </div>
+          ))}
+        </nav>
 
-      <div className="p-6 border-t border-white/5 space-y-4">
-        <HelperStatusPill />
-        <button 
-          onClick={logout}
-          className="flex items-center gap-3 w-full px-4 py-3 text-white/40 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all duration-300 group"
-        >
-          <LogOut size={20} strokeWidth={1.5} className="group-hover:stroke-2" />
-          <span className="hidden md:block font-medium text-sm">Sign Out</span>
-        </button>
+        <div className="mt-auto pt-8 border-t border-white/5 space-y-6">
+          <div className="space-y-1">
+            {secondaryLinks.map((link, i) => renderLink(link, i + 100))}
+          </div>
+          
+          <div className="space-y-4">
+            <HelperStatusPill />
+            <button 
+              onClick={logout}
+              className="flex items-center gap-3 w-full px-4 py-3 text-white/20 hover:text-rose-400 hover:bg-rose-500/5 rounded-xl transition-all duration-300 group"
+            >
+              <LogOut size={18} strokeWidth={1.5} className="group-hover:stroke-2" />
+              <span className="hidden md:block font-semibold text-sm">Sign Out</span>
+            </button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
 };
+
+
 
 const HelperStatusPill = () => {
   const { helperStatus, refreshHelperStatus } = useWorkspace();
