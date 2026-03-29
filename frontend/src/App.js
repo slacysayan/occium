@@ -11,12 +11,9 @@ import Accounts from "./pages/Accounts";
 import NewPost from "./pages/NewPost";
 import Queue from "./pages/Queue";
 import AIStudio from "./pages/AIStudio";
+import Settings from "./pages/Settings";
 import { Toaster } from "sonner";
 import { workspaceRoutes } from "./lib/routes";
-
-const Settings = () => (
-  <div className="text-white text-center py-20">Settings Page (Coming Soon)</div>
-);
 
 const MarketingLayout = () => (
   <div className="relative min-h-screen">

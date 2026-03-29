@@ -1,139 +1,1103 @@
-import React, { useState } from 'react';
-import { GlassCard } from '../components/ui/GlassCard';
-import { useAuth } from '../context/AuthContext';
-import { Key, Save, Eye, EyeOff, ShieldCheck } from 'lucide-react';
-import { toast } from 'sonner';
+import React, { useCallback, useEffect, useState } from "react";
+import { GlassCard } from "../components/ui/GlassCard";
+import { useAuth } from "../context/AuthContext";
+import { useWorkspace } from "../context/WorkspaceContext";
+import {
+  Key,
+  Save,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Server,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  RefreshCw,
+  Trash2,
+  Download,
+  Loader2,
+  Youtube,
+  Linkedin,
+  Sparkles,
+  Globe,
+  User,
+  Plug,
+  XCircle,
+  ChevronRight,
+  Terminal,
+} from "lucide-react";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import { getLocalHelperStatus } from "../lib/localApp";
 
-const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
+/* ─────────────────────────────────────────────
+   Local-storage keys for persisted settings
+───────────────────────────────────────────── */
+const SETTINGS_KEY = "occium.settings.v1";
+const TASKS_KEY = "occium.tasks.v1";
 
+function readSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(next) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+}
+
+export function readTasks() {
+  try {
+    return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function writeTasks(tasks) {
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  window.dispatchEvent(new CustomEvent("occium:taskschange", { detail: tasks }));
+}
+
+export function upsertTask(task) {
+  const tasks = readTasks();
+  const idx = tasks.findIndex((t) => t.id === task.id);
+  if (idx >= 0) {
+    tasks[idx] = { ...tasks[idx], ...task };
+  } else {
+    tasks.unshift(task);
+  }
+  writeTasks(tasks);
+  return tasks;
+}
+
+export function createTask({ id, title, sourceUrl, accountName, kind = "single" }) {
+  return upsertTask({
+    id,
+    title,
+    sourceUrl,
+    accountName,
+    kind,
+    status: "queued",
+    progress: 0,
+    startedAt: null,
+    completedAt: null,
+    errorMessage: null,
+    videoId: null,
+    videoUrl: null,
+  });
+}
+
+export function updateTaskStatus(id, patch) {
+  return upsertTask({ id, ...patch });
+}
+
+/* ─────────────────────────────────────────────
+   Tab navigation
+───────────────────────────────────────────── */
+const TABS = [
+  { id: "overview", label: "Overview", icon: Globe },
+  { id: "api_keys", label: "API Keys", icon: Key },
+  { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "helper", label: "Local Helper", icon: Server },
+  { id: "tasks", label: "Download Tasks", icon: Download },
+];
+
+/* ─────────────────────────────────────────────
+   Main component
+───────────────────────────────────────────── */
 const Settings = () => {
-    const { user } = useAuth();
-    const [keys, setKeys] = useState({
-        openai: '',
-        anthropic: '',
-        linkedin_client: ''
-    });
-    const [showKeys, setShowKeys] = useState({});
+  const { user } = useAuth();
+  const { helperStatus, helperLoading, helperCheckedAt, refreshHelperStatus, accounts } =
+    useWorkspace();
 
-    const toggleShow = (key) => {
-        setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
-    };
+  const [activeTab, setActiveTab] = useState("overview");
+  const [settings, setSettings] = useState(readSettings);
+  const [showKeys, setShowKeys] = useState({});
+  const [tasks, setTasks] = useState(readTasks);
+  const [helperUrlDraft, setHelperUrlDraft] = useState(
+    settings.helperUrl || "http://127.0.0.1:4315"
+  );
 
-    const handleChange = (e) => {
-        setKeys({ ...keys, [e.target.name]: e.target.value });
-    };
+  /* Sync tasks from storage events */
+  useEffect(() => {
+    const sync = () => setTasks(readTasks());
+    window.addEventListener("occium:taskschange", sync);
+    return () => window.removeEventListener("occium:taskschange", sync);
+  }, []);
 
-    const handleSave = () => {
-        toast.success("Settings saved successfully");
-    };
+  const saveSettings = useCallback(
+    (patch) => {
+      const next = { ...settings, ...patch };
+      setSettings(next);
+      writeSettings(next);
+      toast.success("Settings saved");
+    },
+    [settings]
+  );
 
-    return (
-        <div className="max-w-4xl mx-auto space-y-10">
-             <div>
-                <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Settings</h1>
-                <p className="text-white/40 font-light">Manage your API keys and security.</p>
-            </div>
+  const toggleKey = (key) =>
+    setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }));
 
-            <div className="grid grid-cols-1 gap-8">
-                <GlassCard>
-                    <div className="flex items-center gap-4 mb-8 border-b border-white/10 pb-6">
-                        <div className="p-3 bg-occium-gold/20 rounded-xl text-occium-gold">
-                            <ShieldCheck size={24} />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-medium text-white">API Configuration</h2>
-                            <p className="text-white/50 text-sm">Securely store your keys. We encrypt them at rest.</p>
-                        </div>
-                    </div>
+  const clearTasks = () => {
+    writeTasks([]);
+    setTasks([]);
+    toast.success("Task history cleared");
+  };
 
-                    <div className="space-y-6">
-                        <div className="grid grid-cols-1 gap-6">
-                            <ApiKeyInput 
-                                label="OpenAI API Key" 
-                                name="openai" 
-                                value={keys.openai} 
-                                onChange={handleChange} 
-                                show={showKeys.openai} 
-                                onToggle={() => toggleShow('openai')}
-                            />
-                             <ApiKeyInput 
-                                label="Anthropic API Key" 
-                                name="anthropic" 
-                                value={keys.anthropic} 
-                                onChange={handleChange} 
-                                show={showKeys.anthropic} 
-                                onToggle={() => toggleShow('anthropic')}
-                            />
-                             <ApiKeyInput 
-                                label="LinkedIn Client Secret" 
-                                name="linkedin_client" 
-                                value={keys.linkedin_client} 
-                                onChange={handleChange} 
-                                show={showKeys.linkedin_client} 
-                                onToggle={() => toggleShow('linkedin_client')}
-                            />
-                        </div>
+  const removeTask = (id) => {
+    const next = tasks.filter((t) => t.id !== id);
+    writeTasks(next);
+    setTasks(next);
+  };
 
-                        <div className="pt-8 flex justify-end">
-                            <button 
-                                onClick={handleSave}
-                                className="flex items-center gap-2 bg-white text-black px-8 py-3 rounded-full font-medium hover:scale-105 transition-transform"
-                            >
-                                <Save size={18} /> Save Changes
-                            </button>
-                        </div>
-                    </div>
-                </GlassCard>
+  /* Helper URL live-test */
+  const [testingHelper, setTestingHelper] = useState(false);
+  const testHelperUrl = async () => {
+    setTestingHelper(true);
+    try {
+      const res = await getLocalHelperStatus();
+      if (res.available) {
+        toast.success(`Helper reachable — yt-dlp ${res.ytDlp?.version || "unknown"}`);
+      } else {
+        toast.error("Helper is offline or not reachable");
+      }
+    } catch {
+      toast.error("Could not reach helper");
+    } finally {
+      setTestingHelper(false);
+    }
+  };
 
-                <GlassCard>
-                    <div className="flex items-center gap-4 mb-6">
-                         <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20">
-                             {user?.profile_picture ? (
-                                 <img src={user.profile_picture} alt="Profile" />
-                             ) : (
-                                 <div className="w-full h-full bg-white/10 flex items-center justify-center">
-                                     <img src={OCCIUM_MARK_SRC} alt="" className="w-7 h-7 object-contain opacity-90" />
-                                 </div>
-                             )}
-                         </div>
-                         <div>
-                             <h3 className="text-lg font-medium text-white">{user?.name}</h3>
-                             <p className="text-white/40 text-sm">{user?.email}</p>
-                         </div>
-                    </div>
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-                        <h4 className="text-red-400 font-medium mb-1">Danger Zone</h4>
-                        <button className="text-white/60 hover:text-red-400 text-sm transition-colors">Delete Account</button>
-                    </div>
-                </GlassCard>
-            </div>
+  /* ── computed ── */
+  const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
+  const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
+
+  const taskCounts = tasks.reduce(
+    (acc, t) => {
+      acc[t.status] = (acc[t.status] || 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Settings</h1>
+        <p className="text-white/40 font-light">
+          Configure your workspace, API keys, and local pipeline.
+        </p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-8">
+        {/* Sidebar nav */}
+        <nav className="lg:w-52 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0 shrink-0">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                activeTab === id
+                  ? "bg-white text-black"
+                  : "text-white/50 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              <Icon size={16} />
+              {label}
+              {id === "tasks" && tasks.length > 0 && (
+                <span
+                  className={`ml-auto text-xs px-2 py-0.5 rounded-full font-semibold ${
+                    activeTab === id ? "bg-black/20 text-black" : "bg-white/15 text-white"
+                  }`}
+                >
+                  {tasks.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+            >
+              {activeTab === "overview" && (
+                <OverviewTab
+                  user={user}
+                  youtubeAccounts={youtubeAccounts}
+                  linkedinAccounts={linkedinAccounts}
+                  helperStatus={helperStatus}
+                  taskCounts={taskCounts}
+                  setActiveTab={setActiveTab}
+                />
+              )}
+
+              {activeTab === "api_keys" && (
+                <ApiKeysTab
+                  settings={settings}
+                  showKeys={showKeys}
+                  toggleKey={toggleKey}
+                  onSave={saveSettings}
+                />
+              )}
+
+              {activeTab === "integrations" && (
+                <IntegrationsTab
+                  youtubeAccounts={youtubeAccounts}
+                  linkedinAccounts={linkedinAccounts}
+                  settings={settings}
+                  onSave={saveSettings}
+                />
+              )}
+
+              {activeTab === "helper" && (
+                <HelperTab
+                  helperStatus={helperStatus}
+                  helperLoading={helperLoading}
+                  helperCheckedAt={helperCheckedAt}
+                  refreshHelperStatus={refreshHelperStatus}
+                  helperUrlDraft={helperUrlDraft}
+                  setHelperUrlDraft={setHelperUrlDraft}
+                  testingHelper={testingHelper}
+                  testHelperUrl={testHelperUrl}
+                  onSave={(url) =>
+                    saveSettings({ helperUrl: url })
+                  }
+                />
+              )}
+
+              {activeTab === "tasks" && (
+                <TasksTab
+                  tasks={tasks}
+                  onClear={clearTasks}
+                  onRemove={removeTask}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
-const ApiKeyInput = ({ label, name, value, onChange, show, onToggle }) => (
-    <div className="space-y-2">
-        <label className="text-white/60 text-xs font-medium uppercase tracking-wide">{label}</label>
-        <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20">
-                <Key size={18} />
+/* ═══════════════════════════════════════════
+   Overview Tab
+═══════════════════════════════════════════ */
+const OverviewTab = ({
+  user,
+  youtubeAccounts,
+  linkedinAccounts,
+  helperStatus,
+  taskCounts,
+  setActiveTab,
+}) => (
+  <div className="space-y-6">
+    {/* Identity card */}
+    <GlassCard>
+      <div className="flex items-center gap-5">
+        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white/20 shrink-0">
+          {user?.profile_picture ? (
+            <img src={user.profile_picture} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/40">
+              <User size={28} />
             </div>
-            <input 
-                type={show ? "text" : "password"} 
-                name={name}
-                value={value}
-                onChange={onChange}
-                className="w-full glass-input rounded-xl pl-12 pr-12 py-4 font-mono text-sm" 
-                placeholder="sk-..." 
-            />
-            <button 
-                onClick={onToggle}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
-            >
-                {show ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
+          )}
         </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl font-medium text-white truncate">{user?.name || "Local User"}</h2>
+          <p className="text-white/40 text-sm truncate">{user?.email || "local@occium.app"}</p>
+          <p className="text-white/25 text-xs mt-1">
+            Auth: {user?.auth_provider === "google" ? "Google OAuth" : "Local session"}
+          </p>
+        </div>
+      </div>
+    </GlassCard>
+
+    {/* Status grid */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {[
+        {
+          label: "YouTube Channels",
+          value: youtubeAccounts.length,
+          icon: Youtube,
+          color: "text-red-400",
+          action: "integrations",
+        },
+        {
+          label: "LinkedIn Accounts",
+          value: linkedinAccounts.length,
+          icon: Linkedin,
+          color: "text-blue-400",
+          action: "integrations",
+        },
+        {
+          label: "Helper Status",
+          value: helperStatus.available ? "Online" : "Offline",
+          icon: Server,
+          color: helperStatus.available ? "text-emerald-400" : "text-amber-400",
+          action: "helper",
+        },
+        {
+          label: "Active Tasks",
+          value: (taskCounts.running || 0) + (taskCounts.queued || 0),
+          icon: Download,
+          color: "text-occium-gold",
+          action: "tasks",
+        },
+      ].map(({ label, value, icon: Icon, color, action }) => (
+        <button
+          key={label}
+          onClick={() => setActiveTab(action)}
+          className="text-left p-5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all group"
+        >
+          <Icon size={20} className={`${color} mb-3`} />
+          <div className="text-2xl font-light text-white">{value}</div>
+          <div className="text-white/40 text-xs mt-1">{label}</div>
+          <ChevronRight
+            size={14}
+            className="text-white/20 group-hover:text-white/50 transition-colors mt-2"
+          />
+        </button>
+      ))}
     </div>
+
+    {/* Pipeline diagram  */}
+    <GlassCard>
+      <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+        <Globe size={16} className="text-occium-gold" /> $0 Pipeline Architecture
+      </h3>
+      <div className="space-y-3">
+        {[
+          {
+            step: "1",
+            title: "Connect YouTube via Google OAuth",
+            desc: "Popup flow — no server token storage. Token lives in browser localStorage.",
+            status: youtubeAccounts.length > 0 ? "done" : "pending",
+          },
+          {
+            step: "2",
+            title: "Paste source URL → local Python helper fetches metadata",
+            desc: "yt-dlp scrapes title, thumbnail, duration. No API key consumed.",
+            status: helperStatus.available ? "done" : "pending",
+          },
+          {
+            step: "3",
+            title: "Download + upload via Google Data API v3",
+            desc: "Helper downloads mp4 locally, re-uploads to your channel with your OAuth token. Zero extra cost.",
+            status: "info",
+          },
+          {
+            step: "4",
+            title: "Schedule via YouTube's publishAt field",
+            desc: "Pick a date — YouTube holds and publishes it. No cron, no server, no cost.",
+            status: "info",
+          },
+        ].map(({ step, title, desc, status }) => (
+          <div key={step} className="flex gap-4">
+            <div
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
+                status === "done"
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : status === "pending"
+                  ? "bg-amber-500/20 text-amber-400"
+                  : "bg-white/10 text-white/50"
+              }`}
+            >
+              {status === "done" ? "✓" : step}
+            </div>
+            <div>
+              <p className="text-white text-sm font-medium">{title}</p>
+              <p className="text-white/40 text-xs mt-0.5 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlassCard>
+
+    {/* Danger zone */}
+    <GlassCard>
+      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+        <h4 className="text-red-400 font-medium mb-2">Danger Zone</h4>
+        <button
+          onClick={() => {
+            if (window.confirm("Clear ALL local data (accounts, posts, settings)? This cannot be undone.")) {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}
+          className="text-white/60 hover:text-red-400 text-sm transition-colors flex items-center gap-2"
+        >
+          <Trash2 size={14} /> Reset Workspace
+        </button>
+      </div>
+    </GlassCard>
+  </div>
+);
+
+/* ═══════════════════════════════════════════
+   API Keys Tab
+═══════════════════════════════════════════ */
+const ApiKeysTab = ({ settings, showKeys, toggleKey, onSave }) => {
+  const [draft, setDraft] = useState({
+    googleApiKey: settings.googleApiKey || "",
+    geminiApiKey: settings.geminiApiKey || "",
+    youtubeApiKey: settings.youtubeApiKey || "",
+    linkedinClientId: settings.linkedinClientId || "",
+    linkedinClientSecret: settings.linkedinClientSecret || "",
+  });
+
+  const handleSave = () => {
+    onSave(draft);
+  };
+
+  return (
+    <div className="space-y-6">
+      <GlassCard>
+        <SectionHeader
+          icon={ShieldCheck}
+          title="Google Cloud API"
+          subtitle="All keys are stored locally in your browser only — never sent to any server."
+        />
+
+        <div className="space-y-5">
+          <ApiKeyInput
+            label="Google OAuth Client ID"
+            name="googleClientId"
+            value={process.env.REACT_APP_GOOGLE_CLIENT_ID || ""}
+            show={showKeys.googleClientId}
+            onToggle={() => toggleKey("googleClientId")}
+            readOnly
+            hint="Set via REACT_APP_GOOGLE_CLIENT_ID in .env — used for the YouTube connect popup."
+          />
+          <ApiKeyInput
+            label="YouTube Data API v3 Key"
+            name="youtubeApiKey"
+            placeholder="AIzaSy..."
+            value={draft.youtubeApiKey}
+            onChange={(e) => setDraft({ ...draft, youtubeApiKey: e.target.value })}
+            show={showKeys.youtubeApiKey}
+            onToggle={() => toggleKey("youtubeApiKey")}
+            hint="Used for metadata fallback (view counts, thumbnails). Free tier: 10,000 requests/day. Uploads use your OAuth token directly — no key needed."
+          />
+          <ApiKeyInput
+            label="Google AI / Gemini API Key"
+            name="geminiApiKey"
+            placeholder="AIzaSy..."
+            value={draft.geminiApiKey}
+            onChange={(e) => setDraft({ ...draft, geminiApiKey: e.target.value })}
+            show={showKeys.geminiApiKey}
+            onToggle={() => toggleKey("geminiApiKey")}
+            hint="Powers AI Studio ghostwriting and thumbnail generation for free via Gemini Flash. Get it from Google AI Studio (aistudio.google.com)."
+          />
+        </div>
+      </GlassCard>
+
+      <GlassCard>
+        <SectionHeader
+          icon={Linkedin}
+          title="LinkedIn API (Optional)"
+          subtitle="Required only if you want to post LinkedIn content programmatically."
+        />
+        <div className="space-y-5">
+          <ApiKeyInput
+            label="LinkedIn App Client ID"
+            name="linkedinClientId"
+            placeholder="86abc..."
+            value={draft.linkedinClientId}
+            onChange={(e) => setDraft({ ...draft, linkedinClientId: e.target.value })}
+            show={showKeys.linkedinClientId}
+            onToggle={() => toggleKey("linkedinClientId")}
+            hint="Create a LinkedIn app at developer.linkedin.com. Add 'Sign In with LinkedIn' and 'Share on LinkedIn' products."
+          />
+          <ApiKeyInput
+            label="LinkedIn App Client Secret"
+            name="linkedinClientSecret"
+            placeholder="secret..."
+            value={draft.linkedinClientSecret}
+            onChange={(e) => setDraft({ ...draft, linkedinClientSecret: e.target.value })}
+            show={showKeys.linkedinClientSecret}
+            onToggle={() => toggleKey("linkedinClientSecret")}
+            hint="Required alongside the Client ID for the OAuth token exchange flow."
+          />
+        </div>
+      </GlassCard>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          className="flex items-center gap-2 bg-white text-black px-8 py-3 rounded-full font-medium hover:scale-105 transition-transform"
+        >
+          <Save size={18} /> Save API Keys
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   Integrations Tab
+═══════════════════════════════════════════ */
+const IntegrationsTab = ({ youtubeAccounts, linkedinAccounts, settings }) => {
+  const integrations = [
+    {
+      id: "youtube",
+      name: "YouTube",
+      icon: Youtube,
+      color: "text-red-400",
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/20",
+      description:
+        "Upload, schedule, and manage videos. Uses Google OAuth — no API key needed for uploads.",
+      accounts: youtubeAccounts,
+      setupSteps: [
+        "Create a Google Cloud project at console.cloud.google.com",
+        "Enable YouTube Data API v3",
+        "Create OAuth 2.0 credentials (Web application type)",
+        "Add your domain to Authorized JavaScript Origins",
+        "Set REACT_APP_GOOGLE_CLIENT_ID in your .env file",
+      ],
+      cost: "$0 — Uploads use your OAuth token directly",
+      status: youtubeAccounts.length > 0 ? "connected" : "disconnected",
+    },
+    {
+      id: "linkedin",
+      name: "LinkedIn",
+      icon: Linkedin,
+      color: "text-blue-400",
+      bgColor: "bg-blue-500/10",
+      borderColor: "border-blue-500/20",
+      description:
+        "Post text and image content to LinkedIn. Requires a LinkedIn Developer App and OAuth flow.",
+      accounts: linkedinAccounts,
+      setupSteps: [
+        "Go to developer.linkedin.com and create an app",
+        "Add 'Sign In with LinkedIn using OpenID Connect' product",
+        "Add 'Share on LinkedIn' product",
+        "Copy Client ID & Secret to the API Keys tab",
+        "LinkedIn OAuth is handled locally — no server needed",
+      ],
+      cost: "$0 — LinkedIn API is free for personal use (rate limits apply)",
+      status: linkedinAccounts.length > 0 ? "connected" : "disconnected",
+    },
+    {
+      id: "gemini",
+      name: "Google Gemini",
+      icon: Sparkles,
+      color: "text-occium-gold",
+      bgColor: "bg-occium-gold/10",
+      borderColor: "border-occium-gold/20",
+      description:
+        "Powers AI Studio ghostwriting and thumbnail prompt generation. Gemini Flash is extremely cheap — effectively $0 for personal use.",
+      accounts: [],
+      setupSteps: [
+        "Go to aistudio.google.com",
+        "Generate an API key (free, no credit card needed initially)",
+        "Paste key into API Keys tab under Gemini API Key",
+        "AI Studio will use this for real LLM generation instead of templates",
+      ],
+      cost: `${settings.geminiApiKey ? "✓ Key configured" : "Key not set — using static templates"}`,
+      status: settings.geminiApiKey ? "connected" : "disconnected",
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {integrations.map((integration) => (
+        <IntegrationCard key={integration.id} integration={integration} />
+      ))}
+
+      {/* Roadmap */}
+      <GlassCard>
+        <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+          <Clock size={16} className="text-white/40" /> Future Integrations (Roadmap)
+        </h3>
+        <div className="space-y-2">
+          {[
+            { name: "Twitter / X", note: "Requires API v2 Basic tier ($100/mo) — not $0" },
+            { name: "Instagram", note: "Requires Meta Business account — complex approval process" },
+            { name: "Notion / Google Docs", note: "Content calendar sync — planned, free" },
+            { name: "RSS feed scheduler", note: "Auto-pull from YouTube RSS, no API key needed" },
+          ].map(({ name, note }) => (
+            <div
+              key={name}
+              className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+            >
+              <Clock size={14} className="text-white/20 mt-0.5 shrink-0" />
+              <div>
+                <span className="text-white/60 text-sm font-medium">{name}</span>
+                <span className="text-white/30 text-xs block mt-0.5">{note}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+    </div>
+  );
+};
+
+const IntegrationCard = ({ integration }) => {
+  const [expanded, setExpanded] = useState(false);
+  const { icon: Icon, color, bgColor, borderColor } = integration;
+  const isConnected = integration.status === "connected";
+
+  return (
+    <GlassCard>
+      <div className="flex items-start gap-4">
+        <div className={`p-3 rounded-xl ${bgColor} border ${borderColor} shrink-0`}>
+          <Icon size={22} className={color} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="text-white font-medium">{integration.name}</h3>
+              <p className="text-white/40 text-sm mt-0.5">{integration.description}</p>
+            </div>
+            <StatusBadge connected={isConnected} />
+          </div>
+
+          {integration.accounts.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {integration.accounts.map((acc) => (
+                <div
+                  key={acc._id}
+                  className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/10"
+                >
+                  {acc.profile_picture ? (
+                    <img
+                      src={acc.profile_picture}
+                      alt=""
+                      className="w-7 h-7 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+                      <Icon size={14} className={color} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{acc.account_name}</p>
+                    <p className="text-white/30 text-xs">
+                      {acc.connection_mode === "google" ? "Google OAuth" : acc.connection_mode}
+                      {acc.channel_id ? ` · ${acc.channel_id}` : ""}
+                    </p>
+                  </div>
+                  <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-white/25 text-xs">{integration.cost}</p>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-white/40 hover:text-white text-xs flex items-center gap-1 transition-colors"
+            >
+              Setup guide
+              <ChevronRight
+                size={12}
+                className={`transition-transform ${expanded ? "rotate-90" : ""}`}
+              />
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 p-4 rounded-xl bg-black/30 border border-white/10 space-y-2">
+                  <p className="text-white/50 text-xs uppercase tracking-widest mb-3">
+                    Setup Steps
+                  </p>
+                  {integration.setupSteps.map((step, i) => (
+                    <div key={i} className="flex gap-3">
+                      <span className="text-white/20 text-xs w-5 text-right shrink-0">
+                        {i + 1}.
+                      </span>
+                      <p className="text-white/60 text-sm">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </GlassCard>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   Local Helper Tab
+═══════════════════════════════════════════ */
+const HelperTab = ({
+  helperStatus,
+  helperLoading,
+  helperCheckedAt,
+  refreshHelperStatus,
+  helperUrlDraft,
+  setHelperUrlDraft,
+  testingHelper,
+  testHelperUrl,
+  onSave,
+}) => (
+  <div className="space-y-6">
+    <GlassCard>
+      <SectionHeader icon={Server} title="Python Helper" subtitle="Runs locally on your machine. Handles yt-dlp downloads and YouTube API uploads." />
+
+      {/* Status */}
+      <div
+        className={`flex items-start gap-4 p-4 rounded-xl border ${
+          helperStatus.available
+            ? "border-emerald-500/20 bg-emerald-500/5"
+            : "border-amber-400/20 bg-amber-500/5"
+        }`}
+      >
+        {helperStatus.available ? (
+          <CheckCircle2 size={20} className="text-emerald-400 shrink-0 mt-0.5" />
+        ) : (
+          <AlertCircle size={20} className="text-amber-400 shrink-0 mt-0.5" />
+        )}
+        <div className="flex-1">
+          <p className="text-white font-medium text-sm">
+            {helperStatus.available ? "Helper is online" : "Helper is offline"}
+          </p>
+          {helperStatus.available && helperStatus.ytDlp && (
+            <p className="text-white/50 text-xs mt-1">
+              yt-dlp {helperStatus.ytDlp.version} · Python {helperStatus.pythonVersion}
+            </p>
+          )}
+          {helperCheckedAt && (
+            <p className="text-white/25 text-xs mt-1">
+              Last checked: {new Date(helperCheckedAt).toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={refreshHelperStatus}
+          disabled={helperLoading}
+          className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          <RefreshCw size={14} className={`text-white ${helperLoading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {/* Helper URL config */}
+      <div className="mt-6 space-y-3">
+        <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+          Helper Base URL
+        </label>
+        <div className="flex gap-2">
+          <input
+            value={helperUrlDraft}
+            onChange={(e) => setHelperUrlDraft(e.target.value)}
+            className="flex-1 glass-input rounded-xl px-4 py-3 font-mono text-sm"
+            placeholder="http://127.0.0.1:4315"
+          />
+          <button
+            onClick={testHelperUrl}
+            disabled={testingHelper}
+            className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm transition-colors flex items-center gap-2"
+          >
+            {testingHelper ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
+            Test
+          </button>
+          <button
+            onClick={() => onSave(helperUrlDraft)}
+            className="px-4 py-3 bg-white text-black rounded-xl text-sm font-medium hover:scale-105 transition-transform"
+          >
+            Save
+          </button>
+        </div>
+        <p className="text-white/30 text-xs">
+          Default is http://127.0.0.1:4315. Change this only if you run the helper on a custom port.
+        </p>
+      </div>
+    </GlassCard>
+
+    {/* Launch instructions */}
+    <GlassCard>
+      <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+        <Terminal size={16} className="text-white/40" /> Start the Helper
+      </h3>
+      <div className="space-y-3">
+        <div className="p-3 bg-black/40 rounded-xl border border-white/10">
+          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Windows (one-click)</p>
+          <code className="text-white text-sm font-mono">start-helper.bat</code>
+        </div>
+        <div className="p-3 bg-black/40 rounded-xl border border-white/10">
+          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Manual (any OS)</p>
+          <code className="text-white/80 text-xs font-mono block leading-relaxed">
+            python -m pip install -r local-helper/requirements.txt<br />
+            python local-helper/server.py
+          </code>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-white/50 text-xs uppercase tracking-widest mb-3">Helper API Endpoints</p>
+        {[
+          { method: "GET", path: "/health", desc: "Status check — returns yt-dlp version" },
+          { method: "POST", path: "/api/youtube/source", desc: "Inspect any video, playlist or channel URL" },
+          { method: "POST", path: "/api/youtube/metadata", desc: "Single video metadata extraction" },
+          { method: "POST", path: "/api/youtube/upload", desc: "Download via yt-dlp → upload to YouTube" },
+        ].map(({ method, path, desc }) => (
+          <div key={path} className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
+            <span
+              className={`text-xs font-bold font-mono shrink-0 mt-0.5 ${
+                method === "GET" ? "text-emerald-400" : "text-blue-400"
+              }`}
+            >
+              {method}
+            </span>
+            <div>
+              <code className="text-white/80 text-xs font-mono">{path}</code>
+              <p className="text-white/35 text-xs mt-0.5">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlassCard>
+  </div>
+);
+
+/* ═══════════════════════════════════════════
+   Download Tasks Tab
+═══════════════════════════════════════════ */
+const TasksTab = ({ tasks, onClear, onRemove }) => {
+  const grouped = {
+    running: tasks.filter((t) => t.status === "running"),
+    queued: tasks.filter((t) => t.status === "queued"),
+    completed: tasks.filter((t) => t.status === "completed"),
+    failed: tasks.filter((t) => t.status === "failed"),
+  };
+
+  return (
+    <div className="space-y-6">
+      <GlassCard>
+        <div className="flex items-center justify-between mb-6">
+          <SectionHeader
+            icon={Download}
+            title="Download & Upload Tasks"
+            subtitle="Active and completed video import jobs initiated from the Composer."
+          />
+          {tasks.length > 0 && (
+            <button
+              onClick={onClear}
+              className="flex items-center gap-2 text-white/40 hover:text-red-400 text-sm transition-colors shrink-0"
+            >
+              <Trash2 size={14} /> Clear all
+            </button>
+          )}
+        </div>
+
+        {tasks.length === 0 ? (
+          <div className="text-center py-16 text-white/20">
+            <Download size={48} className="mx-auto mb-4 opacity-30" />
+            <p className="text-sm">No tasks yet. Start an import from the Composer.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Running first */}
+            {[...grouped.running, ...grouped.queued, ...grouped.failed, ...grouped.completed].map(
+              (task) => (
+                <TaskRow key={task.id} task={task} onRemove={onRemove} />
+              )
+            )}
+          </div>
+        )}
+      </GlassCard>
+
+      {/* Stats */}
+      {tasks.length > 0 && (
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: "Running", count: grouped.running.length, color: "text-blue-400" },
+            { label: "Queued", count: grouped.queued.length, color: "text-amber-400" },
+            { label: "Completed", count: grouped.completed.length, color: "text-emerald-400" },
+            { label: "Failed", count: grouped.failed.length, color: "text-red-400" },
+          ].map(({ label, count, color }) => (
+            <div
+              key={label}
+              className="p-4 rounded-xl bg-white/5 border border-white/10 text-center"
+            >
+              <div className={`text-2xl font-light ${color}`}>{count}</div>
+              <div className="text-white/40 text-xs mt-1">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TaskRow = ({ task, onRemove }) => {
+  const statusMeta = {
+    queued: { icon: Clock, color: "text-amber-400", label: "Queued" },
+    running: { icon: Loader2, color: "text-blue-400", label: "Uploading..." },
+    completed: { icon: CheckCircle2, color: "text-emerald-400", label: "Done" },
+    failed: { icon: XCircle, color: "text-red-400", label: "Failed" },
+  }[task.status] || { icon: Clock, color: "text-white/40", label: task.status };
+
+  const { icon: StatusIcon, color, label } = statusMeta;
+
+  return (
+    <div
+      className={`flex items-start gap-4 p-4 rounded-2xl border transition-all ${
+        task.status === "running"
+          ? "border-blue-400/20 bg-blue-500/5"
+          : task.status === "failed"
+          ? "border-red-400/15 bg-red-500/5"
+          : task.status === "completed"
+          ? "border-emerald-400/15 bg-emerald-500/5"
+          : "border-white/10 bg-white/5"
+      }`}
+    >
+      <StatusIcon
+        size={18}
+        className={`${color} shrink-0 mt-0.5 ${task.status === "running" ? "animate-spin" : ""}`}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-sm font-medium truncate">{task.title}</p>
+        <div className="flex flex-wrap gap-3 mt-1">
+          <span className={`text-xs font-medium ${color}`}>{label}</span>
+          {task.accountName && (
+            <span className="text-white/30 text-xs">→ {task.accountName}</span>
+          )}
+          {task.kind === "bulk" && (
+            <span className="text-white/30 text-xs">Bulk import</span>
+          )}
+        </div>
+
+        {task.status === "running" && (
+          <div className="mt-3 space-y-1">
+            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-blue-400 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${task.progress || 10}%` }}
+                transition={{ duration: 0.4 }}
+              />
+            </div>
+            <p className="text-white/30 text-xs">{task.progress || 0}% complete</p>
+          </div>
+        )}
+
+        {task.status === "completed" && task.videoUrl && (
+          <a
+            href={task.videoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-occium-gold text-xs mt-1 inline-flex items-center gap-1 hover:underline"
+          >
+            View on YouTube <ChevronRight size={10} />
+          </a>
+        )}
+
+        {task.status === "failed" && task.errorMessage && (
+          <p className="text-red-400/60 text-xs mt-1 truncate">{task.errorMessage}</p>
+        )}
+
+        {task.completedAt && (
+          <p className="text-white/20 text-xs mt-1">
+            {new Date(task.completedAt).toLocaleString()}
+          </p>
+        )}
+      </div>
+
+      {(task.status === "completed" || task.status === "failed") && (
+        <button
+          onClick={() => onRemove(task.id)}
+          className="text-white/20 hover:text-white/60 transition-colors shrink-0 mt-0.5"
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────
+   Shared sub-components
+───────────────────────────────────────────── */
+const SectionHeader = ({ icon: Icon, title, subtitle }) => (
+  <div className="flex items-center gap-4 mb-6 border-b border-white/10 pb-4">
+    <div className="p-3 bg-occium-gold/20 rounded-xl text-occium-gold shrink-0">
+      <Icon size={20} />
+    </div>
+    <div>
+      <h2 className="text-lg font-medium text-white">{title}</h2>
+      {subtitle && <p className="text-white/50 text-sm mt-0.5">{subtitle}</p>}
+    </div>
+  </div>
+);
+
+const StatusBadge = ({ connected }) => (
+  <span
+    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border shrink-0 ${
+      connected
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+        : "border-white/10 bg-white/5 text-white/40"
+    }`}
+  >
+    <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-white/30"}`} />
+    {connected ? "Connected" : "Not set up"}
+  </span>
+);
+
+const ApiKeyInput = ({
+  label,
+  name,
+  value,
+  onChange,
+  show,
+  onToggle,
+  placeholder = "••••••••••••",
+  hint,
+  readOnly,
+}) => (
+  <div className="space-y-2">
+    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">{label}</label>
+    <div className="relative">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20">
+        <Key size={16} />
+      </div>
+      <input
+        type={show ? "text" : "password"}
+        name={name}
+        value={value}
+        onChange={onChange}
+        readOnly={readOnly}
+        className={`w-full glass-input rounded-xl pl-11 pr-12 py-3.5 font-mono text-sm ${
+          readOnly ? "opacity-50 cursor-not-allowed" : ""
+        }`}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+      >
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+    {hint && <p className="text-white/30 text-xs leading-relaxed">{hint}</p>}
+  </div>
 );
 
 export default Settings;

@@ -28,6 +28,7 @@ import {
   inspectYouTubeSource,
   uploadYouTubeImport,
 } from "../lib/localApp";
+import { createTask, updateTaskStatus } from "./Settings";
 import { workspaceRoutes } from "../lib/routes";
 
 const HELPER_BOOT_COMMAND = "start-helper.bat";
@@ -321,9 +322,20 @@ const NewPost = () => {
               currentTitle: entry.title,
             });
 
+            const taskId = `task_bulk_${entry.id}_${Date.now()}`;
+            createTask({
+              id: taskId,
+              title: entry.title,
+              sourceUrl: entry.source_url,
+              accountName: account.account_name,
+              kind: "bulk",
+            });
+            updateTaskStatus(taskId, { status: "running", startedAt: new Date().toISOString(), progress: 5 });
+
             try {
               const entryMetadata = await fetchVideoMetadata(entry.source_url);
               const publishAt = buildScheduledPublishAt(index);
+              updateTaskStatus(taskId, { progress: 30 });
               const uploadResult = await uploadYouTubeImport({
                 account,
                 sourceUrl: entry.source_url,
@@ -357,9 +369,21 @@ const NewPost = () => {
                 helper_status: "uploaded",
               });
 
+              updateTaskStatus(taskId, {
+                status: "completed",
+                progress: 100,
+                completedAt: new Date().toISOString(),
+                videoId: uploadResult.videoId,
+                videoUrl: uploadResult.videoUrl,
+              });
               uploadedCount += 1;
             } catch (error) {
               console.error(error);
+              updateTaskStatus(taskId, {
+                status: "failed",
+                completedAt: new Date().toISOString(),
+                errorMessage: error?.message || "Upload failed",
+              });
               failures.push({
                 title: entry.title,
                 message: error?.message || "Upload failed",
@@ -399,34 +423,61 @@ const NewPost = () => {
           return;
         }
 
-        const uploadResult = await uploadYouTubeImport({
-          account,
+        const singleTaskId = `task_single_${Date.now()}`;
+        createTask({
+          id: singleTaskId,
+          title: data.title,
           sourceUrl: data.source_url,
-          title: data.title,
-          description: data.description,
-          tags: data.tags_input,
-          privacyStatus: requestedPrivacy,
-          publishAt,
+          accountName: account.account_name,
+          kind: "single",
         });
+        updateTaskStatus(singleTaskId, { status: "running", startedAt: new Date().toISOString(), progress: 10 });
 
-        createPost({
-          user_id: user.id,
-          account_id: selectedAccount,
-          platform: "youtube",
-          content_type: "video",
-          title: data.title,
-          description: data.description,
-          tags: data.tags_input,
-          source_url: data.source_url,
-          thumbnail_url: data.thumbnail_url,
-          privacy_status: uploadResult.privacyStatus,
-          scheduled_at: publishAt,
-          status: publishAt ? "scheduled" : "published",
-          platform_post_id: uploadResult.videoId,
-          platform_post_url: uploadResult.videoUrl,
-          upload_mode: "python-helper",
-          helper_status: "uploaded",
-        });
+        try {
+          const uploadResult = await uploadYouTubeImport({
+            account,
+            sourceUrl: data.source_url,
+            title: data.title,
+            description: data.description,
+            tags: data.tags_input,
+            privacyStatus: requestedPrivacy,
+            publishAt,
+          });
+
+          createPost({
+            user_id: user.id,
+            account_id: selectedAccount,
+            platform: "youtube",
+            content_type: "video",
+            title: data.title,
+            description: data.description,
+            tags: data.tags_input,
+            source_url: data.source_url,
+            thumbnail_url: data.thumbnail_url,
+            privacy_status: uploadResult.privacyStatus,
+            scheduled_at: publishAt,
+            status: publishAt ? "scheduled" : "published",
+            platform_post_id: uploadResult.videoId,
+            platform_post_url: uploadResult.videoUrl,
+            upload_mode: "python-helper",
+            helper_status: "uploaded",
+          });
+
+          updateTaskStatus(singleTaskId, {
+            status: "completed",
+            progress: 100,
+            completedAt: new Date().toISOString(),
+            videoId: uploadResult.videoId,
+            videoUrl: uploadResult.videoUrl,
+          });
+        } catch (uploadError) {
+          updateTaskStatus(singleTaskId, {
+            status: "failed",
+            completedAt: new Date().toISOString(),
+            errorMessage: uploadError?.message || "Upload failed",
+          });
+          throw uploadError;
+        }
 
         toast.success(publishAt ? "Video uploaded and scheduled on YouTube!" : "Video uploaded to YouTube!");
         resetFormState();
