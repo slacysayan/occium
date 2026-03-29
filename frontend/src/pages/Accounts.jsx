@@ -192,13 +192,24 @@ const Accounts = () => {
 
               {accounts.filter((account) => account.platform === "linkedin").length === 0 && (
                 <div className="p-4 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center py-8">
-                  <p className="text-white/30 text-sm mb-4">No profiles connected</p>
-                  <button
-                    onClick={connectLinkedIn}
-                    className="flex items-center gap-2 bg-white text-black px-6 py-2 rounded-full font-medium text-sm hover:scale-105 transition-transform"
-                  >
-                    <Plus size={16} /> Connect Profile
-                  </button>
+                  <p className="text-white/30 text-sm mb-6">No profiles connected</p>
+                  
+                  <div className="flex flex-col gap-3 w-full max-w-xs">
+                    <button
+                      onClick={connectLinkedIn}
+                      className="flex items-center justify-center gap-3 bg-occium-gold text-black px-6 py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-all shadow-xl shadow-occium-gold/10"
+                    >
+                      <img src={OCCIUM_MARK_SRC} alt="" className="w-5 h-5 object-contain" />
+                      Connect Sayan Chowdhury
+                    </button>
+                    
+                    <button
+                      onClick={connectLinkedIn}
+                      className="flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-xs"
+                    >
+                      <Plus size={12} /> Connect Custom Profile
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

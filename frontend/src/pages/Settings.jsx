@@ -117,9 +117,6 @@ const Settings = () => {
   const [settings, setSettings] = useState(readSettings);
   const [showKeys, setShowKeys] = useState({});
   const [tasks, setTasks] = useState(readTasks);
-  const [helperUrlDraft, setHelperUrlDraft] = useState(
-    settings.helperUrl || "http://127.0.0.1:4315"
-  );
 
   /* Sync tasks from storage events */
   useEffect(() => {
@@ -797,37 +794,6 @@ const HelperTab = ({
         </button>
       </div>
 
-      {/* Helper URL config */}
-      <div className="mt-6 space-y-3">
-        <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
-          Helper Base URL
-        </label>
-        <div className="flex gap-2">
-          <input
-            value={helperUrlDraft}
-            onChange={(e) => setHelperUrlDraft(e.target.value)}
-            className="flex-1 glass-input rounded-xl px-4 py-3 font-mono text-sm"
-            placeholder="http://127.0.0.1:4315"
-          />
-          <button
-            onClick={testHelperUrl}
-            disabled={testingHelper}
-            className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm transition-colors flex items-center gap-2"
-          >
-            {testingHelper ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
-            Test
-          </button>
-          <button
-            onClick={() => onSave(helperUrlDraft)}
-            className="px-4 py-3 bg-white text-black rounded-xl text-sm font-medium hover:scale-105 transition-transform"
-          >
-            Save
-          </button>
-        </div>
-        <p className="text-white/30 text-xs">
-          Default is http://127.0.0.1:4315. Change this only if you run the helper on a custom port.
-        </p>
-      </div>
     </GlassCard>
 
     {/* Launch instructions */}

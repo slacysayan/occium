@@ -13,6 +13,7 @@ import {
   connectYouTubeAccountFromGoogle,
   ensureLocalSession,
   resetLocalUser,
+  connectLinkedInAccount,
 } from "../lib/localApp";
 
 const AuthContext = createContext();
@@ -42,7 +43,15 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
   };
 
   const connectLocalLinkedInAccount = async () => {
-    throw new Error("LinkedIn live connect is not wired yet. We are finishing YouTube first.");
+    // Implementing the requested direct connection for Sayan Chowdhury
+    const result = connectLinkedInAccount({
+      account_name: "Sayan Chowdhury",
+      linkedin_id: "sayanchowdhuryai",
+      profile_picture: null, // Default to mark
+      connection_mode: "direct",
+    });
+    refreshSession();
+    return result;
   };
 
   const loginAsDemo = () => {

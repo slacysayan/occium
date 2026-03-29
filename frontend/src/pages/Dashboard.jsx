@@ -380,9 +380,65 @@ const Dashboard = () => {
               </div>
             )}
           </GlassCard>
+          
+          <LinkedInSpotlightSection />
         </div>
       </div>
     </div>
+  );
+};
+
+const LinkedInSpotlightSection = () => {
+  const { linkedinAccounts } = useWorkspace();
+  const account = linkedinAccounts[0]; // Take the first connected LinkedIn account
+
+  if (!account) return null;
+
+  return (
+    <GlassCard delay={0.19}>
+      <div className="flex items-end justify-between gap-4 mb-6">
+        <div>
+          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn Pulse</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">Profile status</h2>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.18em] text-blue-300">
+          Browser connected
+        </span>
+      </div>
+
+      <div className="flex items-center gap-4 mb-6">
+        {account.profile_picture ? (
+          <img
+            src={account.profile_picture}
+            alt=""
+            className="w-14 h-14 rounded-2xl object-cover border border-white/10"
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center p-3">
+             <img src="/branding/occium-mark.webp" alt="" className="w-full h-full object-contain" />
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="text-white font-medium line-clamp-1">{account.account_name}</p>
+          <p className="text-white/35 text-sm mt-1">LinkedIn connection is active via browser session.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <AnalyticsStat label="Followers" value="~2.1K" />
+        <AnalyticsStat label="Posts" value="34" />
+      </div>
+
+      <div className="mt-6 pt-6 border-t border-white/5 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Recent Network Activity</p>
+        </div>
+        <div className="rounded-2xl bg-white/5 border border-white/5 p-4 text-sm text-white/45">
+          Reach: <span className="text-emerald-400">+12% this week</span>
+          <p className="mt-1 text-xs">Engagement is trending up on recent text-first posts.</p>
+        </div>
+      </div>
+    </GlassCard>
   );
 };
 

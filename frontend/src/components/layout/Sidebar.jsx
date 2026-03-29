@@ -4,6 +4,7 @@ import { LayoutDashboard, Link2, PenSquare, Calendar, Sparkles, Settings, LogOut
 import { cn } from '../../lib/utils';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import { workspaceRoutes } from '../../lib/routes';
 
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
@@ -57,9 +58,9 @@ const Sidebar = () => {
               key={link.path}
               to={link.path}
             >
-              {({ isActive }) => (
+              {({ isActive: linkActive }) => (
                 <div className="relative group">
-                    {isActive && (
+                    {(isActive || linkActive) && (
                         <motion.div
                             layoutId="activeNav"
                             className="absolute inset-0 bg-white/10 rounded-xl"
@@ -73,10 +74,10 @@ const Sidebar = () => {
                         transition={{ delay: 0.1 * index + 0.5 }}
                         className={cn(
                             "relative z-10 flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300",
-                            isActive ? "text-white" : "text-white/40 group-hover:text-white"
+                            (isActive || linkActive) ? "text-white" : "text-white/40 group-hover:text-white"
                         )}
                     >
-                        <link.icon size={20} strokeWidth={isActive ? 2.5 : 1.5} />
+                        <link.icon size={20} strokeWidth={(isActive || linkActive) ? 2.5 : 1.5} />
                         <span className="hidden md:block font-medium tracking-wide text-sm">{link.name}</span>
                     </motion.div>
                 </div>
@@ -86,7 +87,8 @@ const Sidebar = () => {
         })}
       </nav>
 
-      <div className="p-6 border-t border-white/5">
+      <div className="p-6 border-t border-white/5 space-y-4">
+        <HelperStatusPill />
         <button 
           onClick={logout}
           className="flex items-center gap-3 w-full px-4 py-3 text-white/40 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all duration-300 group"
@@ -98,5 +100,29 @@ const Sidebar = () => {
     </motion.div>
   );
 };
+
+const HelperStatusPill = () => {
+  const { helperStatus, refreshHelperStatus } = useWorkspace();
+  
+  return (
+    <div 
+      onClick={refreshHelperStatus}
+      className={cn(
+        "hidden md:flex items-center gap-3 px-4 py-2 rounded-xl border transition-all cursor-pointer hover:border-white/20",
+        helperStatus.available 
+          ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400" 
+          : "bg-rose-500/5 border-rose-500/20 text-rose-400"
+      )}
+    >
+      <div className={cn(
+        "w-1.5 h-1.5 rounded-full animate-pulse",
+        helperStatus.available ? "bg-emerald-400" : "bg-rose-400"
+      )} />
+      <span className="text-[10px] uppercase tracking-widest font-bold">
+        Helper: {helperStatus.available ? "Online" : "Offline"}
+      </span>
+    </div>
+  );
+}
 
 export default Sidebar;

@@ -265,12 +265,6 @@ function parseIsoDurationToSeconds(value) {
 }
 
 function getHelperUrl() {
-  try {
-    const settings = JSON.parse(window.localStorage.getItem("occium.settings.v1") || "{}");
-    if (settings.helperUrl) {
-      return settings.helperUrl.replace(/\/$/, "");
-    }
-  } catch (e) {}
   return appEnv.localHelperUrl.replace(/\/$/, "");
 }
 
@@ -424,16 +418,20 @@ export function connectMockYouTubeAccount() {
   return nextAccount;
 }
 
-export function connectLinkedInAccount() {
+export function connectLinkedInAccount(customDetails = {}) {
   const { currentUser } = ensureState();
   const seed = getUserSeed(currentUser);
-  const linkedinId = `${seed.firstName.toLowerCase().replace(/\s+/g, "-")}-local`;
+  
+  const linkedinId = customDetails.linkedin_id || `${seed.firstName.toLowerCase().replace(/\s+/g, "-")}-local`;
+  const accountName = customDetails.account_name || seed.name;
+  const profilePicture = customDetails.profile_picture || seed.picture;
+
   const nextAccount = buildAccount({
     platform: "linkedin",
-    accountName: seed.name,
-    profilePicture: seed.picture,
+    accountName,
+    profilePicture,
     linkedinId,
-    connectionMode: "mock",
+    connectionMode: customDetails.connection_mode || "mock",
   });
 
   upsertAccount(
