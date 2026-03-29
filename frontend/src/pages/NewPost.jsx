@@ -193,6 +193,18 @@ const NewPost = () => {
     }
   };
 
+  // Auto-fetch metadata when a YouTube URL is pasted
+  useEffect(() => {
+    const isYouTubeUrl = sourceUrl && (sourceUrl.includes("youtube.com") || sourceUrl.includes("youtu.be"));
+    if (isYouTubeUrl && !currentTitle && !collectionSource && !isGenerating) {
+      const timeoutId = setTimeout(() => {
+        handleVideoMetadataFetch();
+      }, 800);
+      return () => clearTimeout(timeoutId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceUrl]);
+
   const resetFormState = () => {
     reset(defaultValues);
     setVideoPreview(null);

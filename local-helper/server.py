@@ -13,6 +13,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from pydantic import BaseModel, Field
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 PORT = int(os.getenv("PORT", "4315"))
@@ -46,6 +50,25 @@ class UploadPayload(BaseModel):
     privacyStatus: str = "private"
     publishAt: str | None = None
     channelId: str | None = None
+
+
+class LinkedInTokenPayload(BaseModel):
+    code: str
+    redirectUri: str
+    clientId: str
+    clientSecret: str
+
+
+class LinkedInProfilePayload(BaseModel):
+    accessToken: str
+
+
+class LinkedInPostPayload(BaseModel):
+    accessToken: str
+    authorId: str
+    text: str
+    linkUrl: str | None = None
+    linkTitle: str | None = None
 
 
 def build_ydl(options: dict[str, Any] | None = None) -> yt_dlp.YoutubeDL:
@@ -276,6 +299,72 @@ def youtube_upload(payload: UploadPayload) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(error) or "YouTube upload failed") from error
     finally:
         cleanup_download(temp_dir)
+
+
+@app.post("/api/linkedin/token")
+def linkedin_token(payload: LinkedInTokenPayload) -> dict[str, Any]:
+    url = "https://www.linkedin.com/oauth/v2/accessToken"
+    data = {
+        "grant_type": "authorization_code",
+        "code": payload.code,
+        "redirect_uri": payload.redirectUri,
+        "client_id": payload.clientId,
+        "client_secret": payload.clientSecret,
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    response = requests.post(url, data=data, headers=headers)
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
+
+@app.post("/api/linkedin/profile")
+def linkedin_profile(payload: LinkedInProfilePayload) -> dict[str, Any]:
+    url = "https://api.linkedin.com/v2/userinfo"
+    headers = {"Authorization": f"Bearer {payload.accessToken}"}
+    response = requests.get(url, headers=headers)
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
+
+@app.post("/api/linkedin/post")
+def linkedin_post(payload: LinkedInPostPayload) -> dict[str, Any]:
+    url = "https://api.linkedin.com/v2/ugcPosts"
+    headers = {
+        "Authorization": f"Bearer {payload.accessToken}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json",
+    }
+    
+    author_urn = f"urn:li:person:{payload.authorId}"
+    body = {
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": payload.text},
+                "shareMediaCategory": "ARTICLE" if payload.linkUrl else "NONE",
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        }
+    }
+    
+    if payload.linkUrl:
+        body["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
+            {
+                "status": "READY",
+                "description": {"text": payload.linkTitle or "View on YouTube"},
+                "originalUrl": payload.linkUrl,
+            }
+        ]
+        
+    response = requests.post(url, headers=headers, json=body)
+    if not response.ok:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
 
 
 if __name__ == "__main__":
