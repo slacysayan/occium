@@ -557,6 +557,24 @@ const LandingPage = () => (
           </div>
         </GlassCard>
       </section>
+
+      <footer className="mx-auto mt-28 max-w-7xl px-8 pb-12">
+        <div className="flex flex-col items-center justify-between gap-8 border-t border-white/10 pt-12 md:flex-row">
+          <Link to="/" className="flex items-center gap-3 opacity-60 transition-opacity hover:opacity-100">
+            <img src="/branding/occium-mark.webp" alt="" className="h-6 w-6 object-contain" />
+            <span className="text-lg font-semibold tracking-tight">Occium</span>
+          </Link>
+
+          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-white/40">
+            <a href="#platform" className="transition-colors hover:text-white">Platform</a>
+            <a href="#workflow" className="transition-colors hover:text-white">Workflow</a>
+            <Link to="/privacy" className="transition-colors hover:text-white">Privacy Policy</Link>
+            <Link to="/terms" className="transition-colors hover:text-white">Terms of Service</Link>
+          </div>
+
+          <p className="text-sm text-white/25">© 2026 Occium. Built for founders.</p>
+        </div>
+      </footer>
     </main>
   </div>
 );

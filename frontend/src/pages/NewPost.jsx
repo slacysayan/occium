@@ -1001,8 +1001,8 @@ const NewPost = () => {
                 </div>
               )}
               {activeTab === "youtube" && !helperStatus.available && (
-                <p className="text-amber-200/80 text-xs">
-                  Upload is paused until the local Python helper is online at `http://127.0.0.1:4315`.
+                <p className="text-amber-200/80 text-xs mt-2">
+                  Upload is paused until the Helper Engine is online. Update connection in Settings if needed.
                 </p>
               )}
             </form>

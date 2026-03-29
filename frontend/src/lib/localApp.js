@@ -264,8 +264,19 @@ function parseIsoDurationToSeconds(value) {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+function getHelperUrl() {
+  try {
+    const settings = JSON.parse(window.localStorage.getItem("occium.settings.v1") || "{}");
+    if (settings.helperUrl) {
+      return settings.helperUrl.replace(/\/$/, "");
+    }
+  } catch (e) {}
+  return appEnv.localHelperUrl.replace(/\/$/, "");
+}
+
 async function fetchHelper(path, options = {}) {
-  const url = `${appEnv.localHelperUrl}${path}`;
+  const baseUrl = getHelperUrl();
+  const url = `${baseUrl}${path}`;
   const response = await axios({
     url,
     method: options.method || "get",
@@ -718,7 +729,7 @@ export async function inspectYouTubeSource(url, maxItems = 80) {
   }
 
   if (looksLikeCollectionUrl(url)) {
-    throw new Error(`Start the local helper at ${appEnv.localHelperUrl} to inspect playlists and channels.`);
+    throw new Error(`Start the helper at ${getHelperUrl()} to inspect playlists and channels.`);
   }
 
   const video = await fetchVideoMetadata(url);

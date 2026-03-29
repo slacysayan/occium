@@ -6,6 +6,8 @@ import { WorkspaceProvider } from "./context/WorkspaceContext";
 import AppBackdrop from "./components/layout/AppBackdrop";
 import Sidebar from "./components/layout/Sidebar";
 import LandingPage from "./pages/LandingPage";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import NewPost from "./pages/NewPost";
@@ -52,6 +54,8 @@ const App = () => (
           <Routes>
             <Route element={<MarketingLayout />}>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
             </Route>
 
             <Route element={<WorkspaceLayout />}>
