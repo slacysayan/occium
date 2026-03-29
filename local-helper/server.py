@@ -321,6 +321,31 @@ def ensure_google_oauth_configured() -> None:
         )
 
 
+def normalize_linkedin_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    member_id = payload.get("id") or payload.get("sub")
+    display_name = (
+        payload.get("name")
+        or " ".join(
+            part
+            for part in [
+                payload.get("localizedFirstName") or payload.get("given_name"),
+                payload.get("localizedLastName") or payload.get("family_name"),
+            ]
+            if part
+        ).strip()
+    )
+
+    return {
+        "id": member_id,
+        "sub": member_id,
+        "name": display_name or "LinkedIn Member",
+        "picture": payload.get("picture"),
+        "email": payload.get("email"),
+        "localizedFirstName": payload.get("localizedFirstName"),
+        "localizedLastName": payload.get("localizedLastName"),
+    }
+
+
 def parse_iso_datetime(value: str) -> datetime:
     try:
         normalized = value.replace("Z", "+00:00")
@@ -663,12 +688,36 @@ def linkedin_token(payload: LinkedInTokenPayload) -> dict[str, Any]:
 
 @app.post("/api/linkedin/profile")
 def linkedin_profile(payload: LinkedInProfilePayload) -> dict[str, Any]:
-    url = "https://api.linkedin.com/v2/userinfo"
     headers = {"Authorization": f"Bearer {payload.accessToken}"}
-    response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
-    if not response.ok:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    userinfo_response = requests.get(
+        "https://api.linkedin.com/v2/userinfo",
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if userinfo_response.ok:
+        return normalize_linkedin_profile(userinfo_response.json())
+
+    profile_response = requests.get(
+        "https://api.linkedin.com/v2/me",
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if not profile_response.ok:
+        raise HTTPException(status_code=profile_response.status_code, detail=profile_response.text)
+
+    profile_payload = profile_response.json()
+    email_response = requests.get(
+        "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if email_response.ok:
+        elements = email_response.json().get("elements") or []
+        if elements:
+            handle = elements[0].get("handle~") or {}
+            profile_payload["email"] = handle.get("emailAddress")
+
+    return normalize_linkedin_profile(profile_payload)
 
 
 @app.post("/api/linkedin/refresh")

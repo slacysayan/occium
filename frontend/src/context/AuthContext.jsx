@@ -58,7 +58,10 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
     }
 
     const redirectUri = `${window.location.origin}/connect`;
-    const scope = "openid profile email w_member_social";
+    const scope =
+      appEnv.linkedinOauthMode === "oidc"
+        ? "openid profile email w_member_social"
+        : "r_liteprofile r_emailaddress w_member_social";
     const state = createOAuthState();
 
     window.sessionStorage.setItem("occium.linkedin.oauth.state", state);
@@ -126,11 +129,10 @@ const GoogleAuthProvider = ({ children }) => {
 
   const googleLogin = useGoogleLogin({
     flow: "auth-code",
-    prompt: "select_account consent",
-    access_type: "offline",
     ux_mode: "popup",
+    select_account: true,
     scope:
-      "openid profile email https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
     onSuccess: async (codeResponse) => {
       try {
         const redirectUri = window.location.origin;

@@ -472,7 +472,7 @@ function parseIsoDurationToSeconds(value) {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-function getHelperUrl() {
+export function getHelperUrl() {
   return appEnv.localHelperUrl.replace(/\/$/, "");
 }
 
@@ -486,7 +486,7 @@ async function fetchHelper(path, options = {}) {
   const baseUrl = getHelperUrl();
   const url = `${baseUrl}${path}`;
 
-  const defaultTimeout = path === "/health" ? 5000 : 1500;
+  const defaultTimeout = path === "/health" ? 10000 : 5000;
   const method = (options.method || "get").toLowerCase();
   const retryConfig =
     options.retry === false
@@ -749,6 +749,7 @@ export async function exchangeGoogleCode(code, redirectUri) {
 export async function fetchLinkedInProfile(accessToken) {
   return fetchHelper("/api/linkedin/profile", {
     method: "post",
+    timeout: 15000,
     data: { accessToken },
   });
 }
@@ -1044,10 +1045,10 @@ export async function ghostwrite({ prompt, platform, tone = "professional" }) {
 export async function getLocalHelperStatus() {
   try {
     const response = await fetchHelper("/health", {
-      timeout: 6000,
+      timeout: 10000,
       retry: {
         attempts: 3,
-        backoffMs: 900,
+        backoffMs: 1200,
       },
     });
     return {

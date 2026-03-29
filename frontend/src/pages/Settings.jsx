@@ -512,7 +512,7 @@ const ApiKeysTab = ({ settings, showKeys, toggleKey, onSave }) => {
             onChange={(e) => setDraft({ ...draft, linkedinClientId: e.target.value })}
             show={showKeys.linkedinClientId}
             onToggle={() => toggleKey("linkedinClientId")}
-            hint="Create a LinkedIn app at developer.linkedin.com. Add 'Sign In with LinkedIn' and 'Share on LinkedIn' products."
+            hint="Default mode uses LinkedIn legacy OAuth scopes with 'Sign In with LinkedIn' plus 'Share on LinkedIn'. If your app uses OIDC instead, set REACT_APP_LINKEDIN_OAUTH_MODE=oidc in Vercel."
           />
           <ApiKeyInput
             label="LinkedIn App Client Secret"
@@ -576,8 +576,8 @@ const IntegrationsTab = ({ youtubeAccounts, linkedinAccounts, settings }) => {
       accounts: linkedinAccounts,
       setupSteps: [
         "Go to developer.linkedin.com and create an app",
-        "Add 'Sign In with LinkedIn using OpenID Connect' product",
-        "Add 'Share on LinkedIn' product",
+        "Default setup: add 'Sign In with LinkedIn' and 'Share on LinkedIn'",
+        "If your app is OIDC-based instead, set REACT_APP_LINKEDIN_OAUTH_MODE=oidc in Vercel",
         "Set REACT_APP_LINKEDIN_CLIENT_ID in Vercel",
         "Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET in Render",
         "Connect your live profile from the Accounts page",

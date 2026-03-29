@@ -48,17 +48,19 @@ const LinkedInCallback = () => {
         }
 
         const profile = await fetchLinkedInProfile(tokenResponse.access_token);
-        if (!profile.sub) {
+        const linkedinMemberId = profile.id || profile.sub || null;
+        if (!linkedinMemberId) {
           throw new Error("LinkedIn profile lookup did not return a member id.");
         }
         const accountName =
           profile.name ||
+          [profile.localizedFirstName, profile.localizedLastName].filter(Boolean).join(" ").trim() ||
           [profile.given_name, profile.family_name].filter(Boolean).join(" ").trim() ||
           "LinkedIn Member";
 
         connectLinkedInAccountImpl({
           account_name: accountName,
-          linkedin_id: profile.sub,
+          linkedin_id: linkedinMemberId,
           profile_picture: profile.picture || null,
           access_token: tokenResponse.access_token,
           refresh_token: tokenResponse.refresh_token,

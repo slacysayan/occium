@@ -16,6 +16,7 @@ Set these exact environment variables in your Vercel Dashboard:
 - `REACT_APP_YOUTUBE_API_KEY`: Your YouTube Data API Key
 - `REACT_APP_LOCAL_HELPER_URL`: `https://occium-yt-dlp-host.onrender.com`
 - `REACT_APP_LINKEDIN_CLIENT_ID`: Your LinkedIn OAuth Client ID
+- `REACT_APP_LINKEDIN_OAUTH_MODE`: `legacy` by default. Set to `oidc` only if your LinkedIn app is using OpenID Connect scopes.
 - `REACT_APP_ENABLE_GOOGLE_CONNECT`: `true`
 
 Set these exact environment variables in your Render service:
@@ -33,6 +34,9 @@ Configure these values before going live:
 - Google Authorized JavaScript Origin: `https://occium-contentsystem-linkedin-yt.vercel.app`
 - Google Authorized Redirect URI: `https://occium-contentsystem-linkedin-yt.vercel.app`
 - LinkedIn Authorized Redirect URL: `https://occium-contentsystem-linkedin-yt.vercel.app/connect`
+- LinkedIn auth mode:
+  - `legacy`: enable `Sign In with LinkedIn` plus `Share on LinkedIn`
+  - `oidc`: enable `Sign In with LinkedIn using OpenID Connect` plus `Share on LinkedIn`, then set `REACT_APP_LINKEDIN_OAUTH_MODE=oidc`
 
 ## Production Workflow
 
