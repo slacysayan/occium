@@ -136,6 +136,8 @@ const GoogleAuthProvider = ({ children }) => {
     onSuccess: async (codeResponse) => {
       try {
         const redirectUri = window.location.origin;
+        console.log("DEBUG: Exchanging Google code with redirect_uri:", redirectUri);
+        
         const tokenResponse = await exchangeGoogleCode(codeResponse.code, redirectUri);
         const headers = {
           Authorization: `Bearer ${tokenResponse.access_token}`,
@@ -161,6 +163,10 @@ const GoogleAuthProvider = ({ children }) => {
             ? channelResult.value.data?.items?.[0] || null
             : null;
 
+        if (!googleProfile && !channelProfile) {
+          throw new Error("Could not retrieve profile information from Google.");
+        }
+
         const result = connectYouTubeAccountFromGoogle({
           googleProfile,
           channelProfile,
@@ -171,11 +177,14 @@ const GoogleAuthProvider = ({ children }) => {
         });
 
         pendingRequestRef.current.resolve?.(result);
-        toast.success("YouTube channel connected.");
+        toast.success("YouTube channel connected successfully.");
       } catch (error) {
-        console.error("Google connect failed", error);
+        console.error("DEBUG: Google Sync Error", error);
+        const errorDetail = error.response?.data?.error_description || error.response?.data?.detail || error.message;
+        console.error("DEBUG: Error Detail:", errorDetail);
+        
         pendingRequestRef.current.reject?.(error);
-        toast.error("Google sign-in completed, but channel sync failed.");
+        toast.error(`Sync failed: ${errorDetail.includes("redirect_uri_mismatch") ? "Redirect URI mismatch in Google Console" : "Check console for details"}`);
       } finally {
         clearPendingRequest();
       }
