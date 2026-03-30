@@ -600,7 +600,7 @@ const NewPost = () => {
           source_url: linkUrl,
           scheduled_at: publishAt,
           status: publishAt ? "scheduled" : "published",
-          platform_post_id: publishAt ? postResult.jobId : postResult.postId,
+          platform_post_id: publishAt ? postResult.id : postResult.postId,
           helper_status: publishAt ? "scheduled" : "completed",
           upload_mode: "render-helper",
         });

@@ -7,7 +7,7 @@ const LOCAL_USER_ID = "local_owner";
 const DEBUG_LOG_KEY = "occium.debug.logs.v1";
 const MAX_DEBUG_LOGS = 200;
 const HELPER_FAILURE_THRESHOLD = 3;
-const HELPER_CIRCUIT_COOLDOWN_MS = 30000;
+const HELPER_CIRCUIT_COOLDOWN_MS = 10000;
 const HELPER_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const YOUTUBE_HOST_PATTERN = /(^|\.)youtube\.com$|(^|\.)youtu\.be$|(^|\.)youtube-nocookie\.com$/i;
 
@@ -240,6 +240,8 @@ function reconcilePosts(posts) {
       post.platform === "youtube" &&
       post.status === "scheduled" &&
       post.scheduled_at &&
+      post.platform_post_id &&
+      post.helper_status === "uploaded" &&
       new Date(post.scheduled_at).getTime() <= now
     ) {
       return {
@@ -863,33 +865,14 @@ export function getAccessTokenHealth(account, warningWindowMinutes = 20) {
 }
 
 async function refreshLinkedInAccessToken(account) {
-  if (!account?.refresh_token) {
-    return account;
-  }
-
-  const response = await fetchHelper("/api/linkedin/refresh", {
-    method: "post",
-    timeout: 15000,
-    data: {
-      refreshToken: account.refresh_token,
-    },
+  // LinkedIn OAuth for standard apps does not issue refresh tokens.
+  // When the access token expires, the user must reconnect via OAuth.
+  // Attempting a refresh_token grant will fail and trigger misleading errors.
+  appendDebugLog("info", "linkedin.refresh.skipped", {
+    accountId: account?._id,
+    reason: "LinkedIn tokens are not renewable. Reconnect is required when the token expires.",
   });
-
-  const nextAccount = {
-    ...account,
-    access_token: response.access_token || account.access_token,
-    refresh_token: response.refresh_token || account.refresh_token,
-    token_expires_at: response.expires_in
-      ? new Date(Date.now() + response.expires_in * 1000).toISOString()
-      : account.token_expires_at,
-  };
-
-  upsertAccount(
-    (existingAccount) => existingAccount._id === account._id,
-    nextAccount,
-  );
-
-  return nextAccount;
+  return account;
 }
 
 async function refreshGoogleAccessToken(account) {
@@ -943,18 +926,20 @@ async function ensureFreshYouTubeAccount(account) {
 
 async function ensureFreshLinkedInAccount(account) {
   const tokenHealth = getAccessTokenHealth(account, 5);
-  if (
-    (tokenHealth.status === "expiring" || tokenHealth.status === "expired") &&
-    account?.refresh_token
-  ) {
-    try {
-      return await refreshLinkedInAccessToken(account);
-    } catch (error) {
-      appendDebugLog("warn", "linkedin.refresh.failed", {
-        accountId: account?._id,
-        message: error?.message || "LinkedIn refresh failed",
-      });
-    }
+  if (tokenHealth.status === "expired") {
+    appendDebugLog("warn", "linkedin.token.expired", {
+      accountId: account?._id,
+    });
+    throw new Error(
+      "LinkedIn access token has expired. Reconnect your LinkedIn profile from the Accounts page to get a new token.",
+    );
+  }
+
+  if (tokenHealth.status === "expiring") {
+    appendDebugLog("warn", "linkedin.token.expiring_soon", {
+      accountId: account?._id,
+      expiresInMinutes: tokenHealth.expiresInMinutes,
+    });
   }
 
   return account;

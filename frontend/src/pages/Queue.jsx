@@ -35,13 +35,20 @@ const Queue = () => {
   };
 
   const removePost = async (id) => {
-    if (!window.confirm("Are you sure?")) {
+    const post = posts.find((p) => p._id === id);
+    const platformNote = post?.platform === "linkedin"
+      ? "\n\nNote: This will NOT cancel the scheduled job on Render. If the LinkedIn post was already scheduled on the helper, it may still be published."
+      : post?.platform === "youtube"
+      ? "\n\nNote: If this video was already uploaded to YouTube with a publishAt date, it will still go live on YouTube's schedule."
+      : "";
+
+    if (!window.confirm(`Remove this post from your local queue?${platformNote}`)) {
       return;
     }
 
     try {
       deletePost(id);
-      toast.success("Post deleted");
+      toast.success("Post removed from local queue");
     } catch (error) {
       console.error(error);
       toast.error("Failed to delete");

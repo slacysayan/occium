@@ -242,10 +242,8 @@ const Settings = () => {
 
               {activeTab === "api_keys" && (
                 <ApiKeysTab
-                  settings={settings}
                   showKeys={showKeys}
                   toggleKey={toggleKey}
-                  onSave={saveSettings}
                 />
               )}
 
@@ -442,99 +440,105 @@ const OverviewTab = ({
 /* ═══════════════════════════════════════════
    API Keys Tab
 ═══════════════════════════════════════════ */
-const ApiKeysTab = ({ settings, showKeys, toggleKey, onSave }) => {
-  const [draft, setDraft] = useState({
-    googleApiKey: settings.googleApiKey || "",
-    geminiApiKey: settings.geminiApiKey || "",
-    youtubeApiKey: settings.youtubeApiKey || "",
-    linkedinClientId: settings.linkedinClientId || "",
-    linkedinClientSecret: settings.linkedinClientSecret || "",
-  });
-
-  const handleSave = () => {
-    onSave(draft);
+const ApiKeysTab = ({ showKeys, toggleKey }) => {
+  const envStatus = {
+    googleClientId: Boolean(appEnv.googleClientId),
+    youtubeApiKey: Boolean(appEnv.youtubeApiKey),
+    linkedinClientId: Boolean(appEnv.linkedinClientId),
+    helperUrl: Boolean(appEnv.localHelperUrl),
   };
 
   return (
     <div className="space-y-6">
       <GlassCard>
+        <div className="flex items-start gap-4 p-4 rounded-xl border border-amber-400/20 bg-amber-500/5 mb-6">
+          <AlertCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-amber-100 text-sm font-medium">Environment-Driven Configuration</p>
+            <p className="text-white/50 text-xs mt-1 leading-relaxed">
+              API keys and OAuth credentials are set as environment variables during deployment.
+              Frontend keys are set in Vercel (build-time), and backend secrets (client secrets) are set in Render (runtime).
+              Keys shown below reflect what was baked into this build.
+            </p>
+          </div>
+        </div>
+
         <SectionHeader
           icon={ShieldCheck}
-          title="Google Cloud API"
-          subtitle="All keys are stored locally in your browser only — never sent to any server."
+          title="Vercel Environment (Frontend)"
+          subtitle="These values are read-only and set via Vercel environment variables at build time."
         />
 
         <div className="space-y-5">
           <ApiKeyInput
             label="Google OAuth Client ID"
             name="googleClientId"
-            value={process.env.REACT_APP_GOOGLE_CLIENT_ID || ""}
+            value={appEnv.googleClientId || ""}
             show={showKeys.googleClientId}
             onToggle={() => toggleKey("googleClientId")}
             readOnly
-            hint="Set via REACT_APP_GOOGLE_CLIENT_ID in .env — used for the YouTube connect popup."
+            hint="REACT_APP_GOOGLE_CLIENT_ID — Used for the YouTube connect popup."
+            configured={envStatus.googleClientId}
           />
           <ApiKeyInput
             label="YouTube Data API v3 Key"
             name="youtubeApiKey"
-            placeholder="AIzaSy..."
-            value={draft.youtubeApiKey}
-            onChange={(e) => setDraft({ ...draft, youtubeApiKey: e.target.value })}
+            value={appEnv.youtubeApiKey || ""}
             show={showKeys.youtubeApiKey}
             onToggle={() => toggleKey("youtubeApiKey")}
-            hint="Used for metadata fallback (view counts, thumbnails). Free tier: 10,000 requests/day. Uploads use your OAuth token directly — no key needed."
+            readOnly
+            hint="REACT_APP_YOUTUBE_API_KEY — Metadata fallback for view counts, thumbnails. Uploads use OAuth token directly."
+            configured={envStatus.youtubeApiKey}
           />
           <ApiKeyInput
-            label="Google AI / Gemini API Key"
-            name="geminiApiKey"
-            placeholder="AIzaSy..."
-            value={draft.geminiApiKey}
-            onChange={(e) => setDraft({ ...draft, geminiApiKey: e.target.value })}
-            show={showKeys.geminiApiKey}
-            onToggle={() => toggleKey("geminiApiKey")}
-            hint="Powers AI Studio ghostwriting and thumbnail generation for free via Gemini Flash. Get it from Google AI Studio (aistudio.google.com)."
+            label="LinkedIn Client ID"
+            name="linkedinClientId"
+            value={appEnv.linkedinClientId || ""}
+            show={showKeys.linkedinClientId}
+            onToggle={() => toggleKey("linkedinClientId")}
+            readOnly
+            hint="REACT_APP_LINKEDIN_CLIENT_ID — Used to initiate LinkedIn OAuth flow from the frontend."
+            configured={envStatus.linkedinClientId}
+          />
+          <ApiKeyInput
+            label="Helper URL"
+            name="helperUrl"
+            value={appEnv.localHelperUrl || ""}
+            show={true}
+            onToggle={() => {}}
+            readOnly
+            hint="REACT_APP_LOCAL_HELPER_URL — Render helper endpoint for uploads, token exchange, and LinkedIn posting."
+            configured={envStatus.helperUrl}
           />
         </div>
       </GlassCard>
 
       <GlassCard>
         <SectionHeader
-          icon={Linkedin}
-          title="LinkedIn API (Optional)"
-          subtitle="Required only if you want to post LinkedIn content programmatically."
+          icon={Server}
+          title="Render Environment (Backend)"
+          subtitle="These secrets live on the Render helper and cannot be viewed from the frontend."
         />
-        <div className="space-y-5">
-          <ApiKeyInput
-            label="LinkedIn App Client ID"
-            name="linkedinClientId"
-            placeholder="86abc..."
-            value={draft.linkedinClientId}
-            onChange={(e) => setDraft({ ...draft, linkedinClientId: e.target.value })}
-            show={showKeys.linkedinClientId}
-            onToggle={() => toggleKey("linkedinClientId")}
-            hint="Default mode uses LinkedIn legacy OAuth scopes with 'Sign In with LinkedIn' plus 'Share on LinkedIn'. If your app uses OIDC instead, set REACT_APP_LINKEDIN_OAUTH_MODE=oidc in Vercel."
-          />
-          <ApiKeyInput
-            label="LinkedIn App Client Secret"
-            name="linkedinClientSecret"
-            placeholder="secret..."
-            value={draft.linkedinClientSecret}
-            onChange={(e) => setDraft({ ...draft, linkedinClientSecret: e.target.value })}
-            show={showKeys.linkedinClientSecret}
-            onToggle={() => toggleKey("linkedinClientSecret")}
-            hint="Required alongside the Client ID for the OAuth token exchange flow."
-          />
+        <div className="space-y-4">
+          {[
+            { label: "GOOGLE_CLIENT_ID", desc: "Google OAuth client ID (must match Vercel value)" },
+            { label: "GOOGLE_CLIENT_SECRET", desc: "Google OAuth client secret for token exchange" },
+            { label: "LINKEDIN_CLIENT_ID", desc: "LinkedIn app client ID (must match Vercel value)" },
+            { label: "LINKEDIN_CLIENT_SECRET", desc: "LinkedIn app client secret for token exchange" },
+          ].map(({ label, desc }) => (
+            <div key={label} className="flex items-start gap-4 p-3 rounded-xl bg-white/5 border border-white/10">
+              <Key size={14} className="text-white/20 mt-0.5 shrink-0" />
+              <div>
+                <code className="text-white/70 text-xs font-mono">{label}</code>
+                <p className="text-white/35 text-xs mt-1">{desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
+        <p className="text-white/25 text-xs mt-4 leading-relaxed">
+          Set these in your Render service dashboard under Environment. They are never exposed to the browser.
+        </p>
       </GlassCard>
-
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-2 bg-white text-black px-8 py-3 rounded-full font-medium hover:scale-105 transition-transform"
-        >
-          <Save size={18} /> Save API Keys
-        </button>
-      </div>
     </div>
   );
 };
@@ -1029,9 +1033,21 @@ const ApiKeyInput = ({
   placeholder = "••••••••••••",
   hint,
   readOnly,
+  configured,
 }) => (
   <div className="space-y-2">
-    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">{label}</label>
+    <div className="flex items-center justify-between">
+      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">{label}</label>
+      {configured !== undefined && (
+        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+          configured
+            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            : "bg-white/5 text-white/30 border border-white/10"
+        }`}>
+          {configured ? "Set" : "Not set"}
+        </span>
+      )}
+    </div>
     <div className="relative">
       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20">
         <Key size={16} />
@@ -1039,13 +1055,13 @@ const ApiKeyInput = ({
       <input
         type={show ? "text" : "password"}
         name={name}
-        value={value}
+        value={value || (configured === false ? "" : "")}
         onChange={onChange}
         readOnly={readOnly}
         className={`w-full glass-input rounded-xl pl-11 pr-12 py-3.5 font-mono text-sm ${
           readOnly ? "opacity-50 cursor-not-allowed" : ""
         }`}
-        placeholder={placeholder}
+        placeholder={configured === false ? "(not configured)" : placeholder}
       />
       <button
         type="button"

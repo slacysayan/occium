@@ -473,20 +473,31 @@ const YouTubePulseSection = ({ analytics, loading, tokenHealth }) => {
 };
 
 const LinkedInSpotlightSection = () => {
-  const { linkedinAccounts } = useWorkspace();
-  const account = linkedinAccounts[0]; // Take the first connected LinkedIn account
+  const { linkedinAccounts, posts } = useWorkspace();
+  const account = linkedinAccounts[0];
 
   if (!account) return null;
+
+  const linkedinPosts = posts.filter((p) => p.platform === "linkedin");
+  const publishedCount = linkedinPosts.filter((p) => p.status === "published").length;
+  const scheduledCount = linkedinPosts.filter((p) => p.status === "scheduled").length;
+  const tokenHealth = getAccessTokenHealth(account);
 
   return (
     <GlassCard delay={0.19}>
       <div className="flex items-end justify-between gap-4 mb-6">
         <div>
-          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn Pulse</p>
-          <h2 className="text-2xl font-light text-white tracking-tight">Profile status</h2>
+          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">Connection Status</h2>
         </div>
-        <span className="text-[10px] uppercase tracking-[0.18em] text-blue-300">
-          Browser connected
+        <span className={`text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full border ${
+          tokenHealth.status === "healthy" || tokenHealth.status === "connected"
+            ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+            : tokenHealth.status === "expired"
+            ? "text-red-400 border-red-500/20 bg-red-500/10"
+            : "text-amber-400 border-amber-500/20 bg-amber-500/10"
+        }`}>
+          {tokenHealth.status === "healthy" || tokenHealth.status === "connected" ? "Token active" : tokenHealth.status === "expired" ? "Token expired" : "Check token"}
         </span>
       </div>
 
@@ -504,22 +515,22 @@ const LinkedInSpotlightSection = () => {
         )}
         <div className="min-w-0">
           <p className="text-white font-medium line-clamp-1">{account.account_name}</p>
-          <p className="text-white/35 text-sm mt-1">LinkedIn connection is active via browser session.</p>
+          <p className="text-white/35 text-sm mt-1">
+            Posting via Render helper. Token stored in browser.
+          </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <AnalyticsStat label="Followers" value="~24.5K" />
-        <AnalyticsStat label="Posts" value="184" />
+        <AnalyticsStat label="Published" value={publishedCount} />
+        <AnalyticsStat label="Scheduled" value={scheduledCount} />
       </div>
 
-      <div className="mt-6 pt-6 border-t border-white/5 space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Recent Network Activity</p>
-        </div>
-        <div className="rounded-2xl bg-white/5 border border-white/5 p-4 text-sm text-white/45">
-          Reach: <span className="text-emerald-400 font-bold">+48% this week</span>
-          <p className="mt-1 text-xs">Engagement is surging with recent AI-enhanced carousel-style content.</p>
+      <div className="mt-6 pt-6 border-t border-white/5 space-y-3">
+        <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Notes</p>
+        <div className="rounded-2xl bg-white/5 border border-white/5 p-4 text-xs text-white/40 leading-relaxed space-y-2">
+          <p>LinkedIn does not provide a public analytics API for personal profiles. Follower counts, impressions, and engagement data are not available here.</p>
+          <p>Counts above reflect posts tracked in this browser session only.</p>
         </div>
       </div>
     </GlassCard>
