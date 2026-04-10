@@ -3,7 +3,6 @@ import { GlassCard } from "../components/ui/GlassCard";
 import { Wand2, Image as ImageIcon, Copy, Loader2, Sparkles, Mic, Save } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { ghostwrite } from "../lib/localApp";
 
 const AIStudio = () => {
   const [prompt, setPrompt] = useState("");
@@ -24,20 +23,9 @@ const AIStudio = () => {
 
     setIsGenerating(true);
     try {
-      if (mode === "text") {
-        const tone = voices.find((voice) => voice.id === selectedVoice)?.name.toLowerCase() || "professional";
-        const response = await ghostwrite({
-          prompt,
-          platform: "linkedin",
-          tone,
-        });
-        setGeneratedText(response.content);
-        toast.success("Content generated!");
-      } else {
-        await new Promise((resolve) => window.setTimeout(resolve, 1200));
-        setGeneratedText("[LOCAL MODE] This workspace keeps image and voice generation mocked for now.");
-        toast.info("This feature is in beta.");
-      }
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      setGeneratedText("[LOCAL MODE] AI generation is paused during backend migration.");
+      toast.info("Backend migration in progress. Action disabled.");
     } catch (error) {
       console.error(error);
       toast.error("Generation failed");

@@ -1,41 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { GlassCard } from "../components/ui/GlassCard";
-import { useAuth } from "../context/AuthContext";
-import { useWorkspace } from "../context/WorkspaceContext";
 import { useForm } from "react-hook-form";
-import {
-  Youtube,
-  Linkedin,
-  Wand2,
-  Calendar as CalendarIcon,
-  Loader2,
-  X,
-  Link,
-  PlayCircle,
-  AlertCircle,
-  CheckCircle2,
-} from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
+import { Calendar as CalendarIcon, Linkedin, Wand2, X, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  createPost,
-  fetchVideoMetadata,
-  getAccessTokenHealth,
-  getHelperUrl,
-  ghostwrite,
-  inspectYouTubeSource,
-  publishLinkedInPost,
-  scheduleLinkedInPost,
-  uploadYouTubeImport,
-} from "../lib/localApp";
-import { createTask, updateTaskStatus } from "./Settings";
+import { GlassCard } from "../components/ui/GlassCard";
+import { useWorkspace } from "../context/WorkspaceContext";
 import { workspaceRoutes } from "../lib/routes";
-
-// HELPER_BOOT_COMMAND removed as helper is now cloud-hosted.
-
+import { uploadToYouTube, postToLinkedIn, createPost, getYouTubeMetadata } from "../lib/localApp";
 
 const defaultValues = {
   source_url: "",
@@ -47,36 +21,11 @@ const defaultValues = {
 };
 
 const NewPost = () => {
-  const { user, connectYouTubeAccount } = useAuth();
-  const {
-    accounts,
-    youtubeAccounts,
-    helperStatus,
-    helperLoading,
-    refreshHelperStatus,
-  } = useWorkspace();
+  const { accounts, youtubeAccounts, linkedinAccounts } = useWorkspace();
   const [activeTab, setActiveTab] = useState("youtube");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [videoPreview, setVideoPreview] = useState(null);
-  const [metadataSource, setMetadataSource] = useState("");
-  const [collectionSource, setCollectionSource] = useState(null);
-  const [selectedCollectionIds, setSelectedCollectionIds] = useState([]);
-  const [collectionFilter, setCollectionFilter] = useState("");
-  const [bulkIntervalMinutes, setBulkIntervalMinutes] = useState(60);
-  const [bulkProgress, setBulkProgress] = useState({
-    active: false,
-    completed: 0,
-    total: 0,
-    currentTitle: "",
-  });
-  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
-  const [bulkCancelRequested, setBulkCancelRequested] = useState(false);
-  const metadataAbortControllerRef = useRef(null);
-  const submissionAbortControllerRef = useRef(null);
-  const cancelBulkUploadRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, setValue, watch, reset } = useForm({
     defaultValues,
@@ -93,1013 +42,278 @@ const NewPost = () => {
     }
   }, [activeTab, accounts, selectedAccount]);
 
-  const helperLabel = helperStatus.available
-    ? "Helper online"
-    : helperLoading || helperStatus.status === "checking"
-      ? "Checking helper"
-    : helperStatus.status === "degraded"
-      ? "Helper online, yt-dlp missing"
-      : "Helper offline";
-  const selectedYouTubeAccount = useMemo(
-    () => accounts.find((account) => account._id === selectedAccount) || null,
-    [accounts, selectedAccount],
-  );
-  const selectedLinkedInAccount = useMemo(
-    () => accounts.find((account) => account._id === selectedAccount) || null,
-    [accounts, selectedAccount],
-  );
   const sourceUrl = watch("source_url");
   const currentTitle = watch("title");
-  const currentPrivacyStatus = watch("privacy_status");
-  const currentTagsInput = watch("tags_input");
   const currentDescription = watch("description");
-  const tokenHealth = useMemo(
-    () => getAccessTokenHealth(selectedYouTubeAccount),
-    [selectedYouTubeAccount],
-  );
-  const filteredCollectionEntries = useMemo(() => {
-    if (!collectionSource) {
-      return [];
-    }
+  const manualThumbnail = watch("thumbnail_url");
 
-    const query = collectionFilter.trim().toLowerCase();
-    if (!query) {
-      return collectionSource.entries;
-    }
-
-    return collectionSource.entries.filter((entry) =>
-      entry.title.toLowerCase().includes(query),
-    );
-  }, [collectionSource, collectionFilter]);
-  const selectedCollectionEntries = useMemo(() => {
-    if (!collectionSource) {
-      return [];
-    }
-
-    return collectionSource.entries.filter((entry) =>
-      selectedCollectionIds.includes(entry.id),
-    );
-  }, [collectionSource, selectedCollectionIds]);
-  const canUploadToYouTube = Boolean(
-    selectedYouTubeAccount?.access_token &&
-      helperStatus.available &&
-      (
-        collectionSource
-          ? selectedCollectionEntries.length > 0
-          : sourceUrl && currentTitle
-      ),
-  );
-  const canPostToLinkedIn = Boolean(
-    selectedLinkedInAccount?.access_token &&
-      helperStatus.available &&
-      currentDescription?.trim(),
-  );
-
-// copyHelperCommand removed
-
-
-  const handleVideoMetadataFetch = useCallback(async () => {
-    const url = sourceUrl;
-    if (!url) {
-      return toast.error("Please enter a YouTube URL");
-    }
-
-    metadataAbortControllerRef.current?.abort();
-    const abortController = new AbortController();
-    metadataAbortControllerRef.current = abortController;
-    setIsFetchingMetadata(true);
-    const toastId = toast.loading("Fetching video details...");
-
-    try {
-      const source = await inspectYouTubeSource(url, 80, {
-        signal: abortController.signal,
-      });
-      setMetadataSource(source.metadata_source || "");
-
-      if (source.kind === "collection") {
-        const nextCollection = source.collection;
-        const firstEntry = nextCollection.entries[0] || null;
-
-        setCollectionSource(nextCollection);
-        setSelectedCollectionIds(nextCollection.entries.map((entry) => entry.id));
-        setCollectionFilter("");
-        setVideoPreview(firstEntry?.thumbnail || null);
-        setValue("title", "");
-        setValue("description", "");
-        setValue("thumbnail_url", firstEntry?.thumbnail || "");
-
-        toast.dismiss(toastId);
-        toast.success(`Loaded ${nextCollection.entry_count} videos`);
-        return;
-      }
-
-      const metadata = source.video;
-      setCollectionSource(null);
-      setSelectedCollectionIds([]);
-      setCollectionFilter("");
-      setValue("title", metadata.title);
-      setValue("description", metadata.description);
-      setValue("thumbnail_url", metadata.thumbnail);
-      setVideoPreview(metadata.thumbnail);
-
-      toast.dismiss(toastId);
-      toast.success("Video imported!");
-    } catch (error) {
-      if (error?.code === "REQUEST_CANCELED") {
-        toast.dismiss(toastId);
-        toast.message("Metadata fetch canceled.");
-        return;
-      }
-
-      console.error(error);
-      toast.dismiss(toastId);
-      toast.error(error?.message || "Failed to fetch metadata");
-    } finally {
-      if (metadataAbortControllerRef.current === abortController) {
-        metadataAbortControllerRef.current = null;
-      }
-      setIsFetchingMetadata(false);
-    }
-  }, [setValue, sourceUrl]);
-
-  // Auto-fetch metadata when a YouTube URL is pasted
   useEffect(() => {
-    const isYouTubeUrl = sourceUrl && (sourceUrl.includes("youtube.com") || sourceUrl.includes("youtu.be"));
-    if (isYouTubeUrl && !currentTitle && !collectionSource && !isGenerating) {
-      const timeoutId = setTimeout(() => {
-        handleVideoMetadataFetch();
-      }, 800);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [collectionSource, currentTitle, handleVideoMetadataFetch, isGenerating, sourceUrl]);
-
-  const resetFormState = () => {
-    reset(defaultValues);
-    setVideoPreview(null);
-    setScheduleDate(null);
-    setMetadataSource("");
-    setCollectionSource(null);
-    setSelectedCollectionIds([]);
-    setCollectionFilter("");
-    setBulkProgress({
-      active: false,
-      completed: 0,
-      total: 0,
-      currentTitle: "",
-    });
-  };
-
-  const toggleCollectionItem = (entryId) => {
-    setSelectedCollectionIds((currentIds) =>
-      currentIds.includes(entryId)
-        ? currentIds.filter((id) => id !== entryId)
-        : [...currentIds, entryId],
-    );
-  };
-
-  const selectVisibleCollectionItems = () => {
-    setSelectedCollectionIds((currentIds) => {
-      const mergedIds = new Set(currentIds);
-      filteredCollectionEntries.forEach((entry) => mergedIds.add(entry.id));
-      return [...mergedIds];
-    });
-  };
-
-  const clearCollectionSelection = () => {
-    setSelectedCollectionIds([]);
-  };
-
-  const handleCancelActiveWork = () => {
-    if (isFetchingMetadata && metadataAbortControllerRef.current) {
-      metadataAbortControllerRef.current.abort();
-      return;
-    }
-
-    if (bulkProgress.active) {
-      cancelBulkUploadRef.current = true;
-      setBulkCancelRequested(true);
-      toast.message("Bulk upload will stop after the current video finishes.");
-      return;
-    }
-
-    if (isSubmitting && submissionAbortControllerRef.current) {
-      submissionAbortControllerRef.current.abort();
-      toast.message("Canceling the current request...");
-    }
-  };
-
-  const buildScheduledPublishAt = (index) => {
-    if (!scheduleDate) {
-      return null;
-    }
-
-    const nextDate = new Date(scheduleDate);
-    nextDate.setMinutes(nextDate.getMinutes() + index * bulkIntervalMinutes);
-    return nextDate.toISOString();
-  };
-
-  const selectionSummary = useMemo(() => {
-    if (!collectionSource) {
-      return null;
-    }
-
-    const totalDurationSeconds = selectedCollectionEntries.reduce(
-      (total, entry) => total + (entry.duration || 0),
-      0,
-    );
-
-    return {
-      sourceType: collectionSource.source_type,
-      selectedCount: selectedCollectionEntries.length,
-      totalDurationSeconds,
-      totalDurationLabel: formatVideoDuration(totalDurationSeconds),
-    };
-  }, [collectionSource, selectedCollectionEntries]);
-
-  const batchSchedulePreview = useMemo(() => {
-    if (!collectionSource || selectedCollectionEntries.length === 0) {
-      return [];
-    }
-
-    return selectedCollectionEntries.slice(0, 4).map((entry, index) => {
-      if (!scheduleDate) {
-        return {
-          id: entry.id,
-          title: entry.title,
-          publishAt: null,
-        };
-      }
-
-      const nextDate = new Date(scheduleDate);
-      nextDate.setMinutes(nextDate.getMinutes() + index * bulkIntervalMinutes);
-
-      return {
-        id: entry.id,
-        title: entry.title,
-        publishAt: nextDate.toISOString(),
+    if (activeTab === "youtube" && sourceUrl && sourceUrl.includes("youtube.com")) {
+      const fetchMetadata = async () => {
+        try {
+          const metadata = await getYouTubeMetadata(sourceUrl);
+          if (metadata) {
+            setValue("title", metadata.title);
+            setValue("description", metadata.description);
+          }
+        } catch (error) {
+          console.error("Metadata fetch failed", error);
+        }
       };
-    });
-  }, [collectionSource, selectedCollectionEntries, scheduleDate, bulkIntervalMinutes]);
+      fetchMetadata();
+    }
+  }, [sourceUrl, activeTab, setValue]);
+
+  const previewThumbnail = useMemo(() => {
+    if (manualThumbnail?.trim()) {
+      return manualThumbnail.trim();
+    }
+
+    if (activeTab !== "youtube") {
+      return "";
+    }
+
+    const videoId = getYouTubeVideoId(sourceUrl);
+    return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+  }, [activeTab, manualThumbnail, sourceUrl]);
 
   const onSubmit = async (data) => {
     if (!selectedAccount) {
-      return toast.error(`Please connect a ${activeTab} account first`);
+      toast.error(`Add a ${activeTab} account first.`);
+      return;
     }
 
-    setIsSubmitting(true);
-    cancelBulkUploadRef.current = false;
-    setBulkCancelRequested(false);
-    submissionAbortControllerRef.current = new AbortController();
+    const account = accounts.find((a) => a._id === selectedAccount);
 
     try {
+      setIsSubmitting(true);
       if (activeTab === "youtube") {
-        const account = selectedYouTubeAccount;
-        const publishAt = scheduleDate ? scheduleDate.toISOString() : null;
-        const requestedPrivacy = data.privacy_status || "private";
-
-        if (!account?.access_token) {
-          throw new Error("Reconnect the YouTube channel before uploading.");
-        }
-
-        if (collectionSource) {
-          if (selectedCollectionEntries.length === 0) {
-            throw new Error("Select at least one video from the playlist or channel.");
-          }
-
-          let uploadedCount = 0;
-          const failures = [];
-
-          setBulkProgress({
-            active: true,
-            completed: 0,
-            total: selectedCollectionEntries.length,
-            currentTitle: "",
-          });
-
-          for (const [index, entry] of selectedCollectionEntries.entries()) {
-            if (cancelBulkUploadRef.current) {
-              break;
-            }
-
-            setBulkProgress({
-              active: true,
-              completed: index,
-              total: selectedCollectionEntries.length,
-              currentTitle: entry.title,
-            });
-
-            const taskId = `task_bulk_${entry.id}_${Date.now()}`;
-            createTask({
-              id: taskId,
-              title: entry.title,
-              sourceUrl: entry.source_url,
-              accountName: account.account_name,
-              kind: "bulk",
-            });
-            updateTaskStatus(taskId, { status: "running", startedAt: new Date().toISOString(), progress: 5 });
-
-            try {
-              const entryMetadata = await fetchVideoMetadata(entry.source_url);
-              const publishAt = buildScheduledPublishAt(index);
-              updateTaskStatus(taskId, { progress: 30 });
-              const uploadResult = await uploadYouTubeImport({
-                account,
-                sourceUrl: entry.source_url,
-                title: entryMetadata.title || entry.title,
-                description:
-                  entryMetadata.description ||
-                  `Imported from YouTube.\n\nSource: ${entry.source_url}`,
-                tags: currentTagsInput,
-                privacyStatus: currentPrivacyStatus || "private",
-                publishAt,
-              });
-
-              createPost({
-                user_id: user.id,
-                account_id: selectedAccount,
-                platform: "youtube",
-                content_type: "video",
-                title: entryMetadata.title || entry.title,
-                description:
-                  entryMetadata.description ||
-                  `Imported from YouTube.\n\nSource: ${entry.source_url}`,
-                tags: currentTagsInput,
-                source_url: entry.source_url,
-                thumbnail_url: entryMetadata.thumbnail || entry.thumbnail,
-                privacy_status: uploadResult.privacyStatus,
-                scheduled_at: publishAt,
-                status: publishAt ? "scheduled" : "published",
-                platform_post_id: uploadResult.videoId,
-                platform_post_url: uploadResult.videoUrl,
-                upload_mode: "python-helper",
-                helper_status: "uploaded",
-              });
-
-              updateTaskStatus(taskId, {
-                status: "completed",
-                progress: 100,
-                completedAt: new Date().toISOString(),
-                videoId: uploadResult.videoId,
-                videoUrl: uploadResult.videoUrl,
-              });
-              uploadedCount += 1;
-            } catch (error) {
-              console.error(error);
-              updateTaskStatus(taskId, {
-                status: "failed",
-                completedAt: new Date().toISOString(),
-                errorMessage: error?.message || "Upload failed",
-              });
-              failures.push({
-                title: entry.title,
-                message: error?.message || "Upload failed",
-              });
-            } finally {
-              setBulkProgress({
-                active: true,
-                completed: index + 1,
-                total: selectedCollectionEntries.length,
-                currentTitle: entry.title,
-              });
-            }
-          }
-
-          const wasCanceled = cancelBulkUploadRef.current;
-          setBulkProgress({
-            active: false,
-            completed: selectedCollectionEntries.length,
-            total: selectedCollectionEntries.length,
-            currentTitle: "",
-          });
-          setBulkCancelRequested(false);
-          cancelBulkUploadRef.current = false;
-
-          if (wasCanceled) {
-            toast.message(`Bulk upload stopped after ${uploadedCount} completed videos.`);
-            return;
-          }
-
-          if (uploadedCount === 0 && failures.length > 0) {
-            throw new Error(failures[0].message);
-          }
-
-          if (failures.length > 0) {
-            toast.error(`${failures.length} videos failed. ${uploadedCount} uploaded successfully.`);
-          } else {
-            toast.success(
-              scheduleDate
-                ? `${uploadedCount} videos scheduled on YouTube!`
-                : `${uploadedCount} videos uploaded to YouTube!`,
-            );
-          }
-
-          resetFormState();
-          return;
-        }
-
-        const singleTaskId = `task_single_${Date.now()}`;
-        createTask({
-          id: singleTaskId,
+        const result = await uploadToYouTube({
+          url: data.source_url,
+          accessToken: account.access_token || "local-helper-mode",
           title: data.title,
-          sourceUrl: data.source_url,
-          accountName: account.account_name,
-          kind: "single",
+          description: data.description,
+          tags: data.tags_input ? data.tags_input.split(",").map((t) => t.trim()) : [],
+          privacyStatus: data.privacy_status,
+          publishAt: scheduleDate ? scheduleDate.toISOString() : null,
+          channelId: account.channel_id,
         });
-        updateTaskStatus(singleTaskId, { status: "running", startedAt: new Date().toISOString(), progress: 10 });
-
-        try {
-          const uploadResult = await uploadYouTubeImport({
-            account,
-            sourceUrl: data.source_url,
-            title: data.title,
-            description: data.description,
-            tags: data.tags_input,
-            privacyStatus: requestedPrivacy,
-            publishAt,
-            signal: submissionAbortControllerRef.current.signal,
-          });
-
-          createPost({
-            user_id: user.id,
-            account_id: selectedAccount,
-            platform: "youtube",
-            content_type: "video",
-            title: data.title,
-            description: data.description,
-            tags: data.tags_input,
-            source_url: data.source_url,
-            thumbnail_url: data.thumbnail_url,
-            privacy_status: uploadResult.privacyStatus,
-            scheduled_at: publishAt,
-            status: publishAt ? "scheduled" : "published",
-            platform_post_id: uploadResult.videoId,
-            platform_post_url: uploadResult.videoUrl,
-            upload_mode: "python-helper",
-            helper_status: "uploaded",
-          });
-
-          updateTaskStatus(singleTaskId, {
-            status: "completed",
-            progress: 100,
-            completedAt: new Date().toISOString(),
-            videoId: uploadResult.videoId,
-            videoUrl: uploadResult.videoUrl,
-          });
-        } catch (uploadError) {
-          updateTaskStatus(singleTaskId, {
-            status: "failed",
-            completedAt: new Date().toISOString(),
-            errorMessage: uploadError?.message || "Upload failed",
-          });
-          throw uploadError;
-        }
-
-        toast.success(publishAt ? "Video uploaded and scheduled on YouTube!" : "Video uploaded to YouTube!");
-        resetFormState();
-        return;
-      }
-
-      if (activeTab === "linkedin") {
-        const account = selectedLinkedInAccount;
-        if (!account?.access_token) {
-          throw new Error("Reconnect the LinkedIn profile before posting.");
-        }
-
-        const publishAt = scheduleDate ? scheduleDate.toISOString() : null;
-        const text = data.description?.trim();
-        const linkUrl = data.source_url?.trim() || null;
-        const linkTitle = data.title?.trim() || null;
-
-        if (!text) {
-          throw new Error("Write the LinkedIn post copy before continuing.");
-        }
-
-        const postResult = publishAt
-          ? await scheduleLinkedInPost({
-              account,
-              text,
-              url: linkUrl,
-              title: linkTitle,
-              publishAt,
-              signal: submissionAbortControllerRef.current.signal,
-            })
-          : await publishLinkedInPost({
-              account,
-              text,
-              url: linkUrl,
-              title: linkTitle,
-              signal: submissionAbortControllerRef.current.signal,
-            });
-
+        toast.success("Successfully uploaded to YouTube!");
         createPost({
-          user_id: user.id,
+          ...data,
+          status: "published",
+          platform_post_id: result.videoId,
+          platform_post_url: result.videoUrl,
           account_id: selectedAccount,
-          platform: activeTab,
-          title: linkTitle,
-          description: text,
-          source_url: linkUrl,
-          scheduled_at: publishAt,
-          status: publishAt ? "scheduled" : "published",
-          platform_post_id: publishAt ? postResult.id : postResult.postId,
-          helper_status: publishAt ? "scheduled" : "completed",
-          upload_mode: "render-helper",
+          platform: "youtube",
         });
-
-        toast.success(
-          publishAt
-            ? "LinkedIn post scheduled on Render!"
-            : "Posted to LinkedIn successfully!",
-        );
-        resetFormState();
-        return;
+      } else {
+        const result = await postToLinkedIn({
+          accessToken: account.access_token || "local-helper-mode",
+          authorId: account.linkedin_id.replace("urn:li:person:", ""),
+          text: data.description,
+          linkUrl: data.source_url,
+          linkTitle: data.title,
+          publishAt: scheduleDate ? scheduleDate.toISOString() : null,
+        });
+        toast.success(scheduleDate ? "Post scheduled on LinkedIn!" : "Successfully posted to LinkedIn!");
+        createPost({
+          ...data,
+          status: scheduleDate ? "scheduled" : "published",
+          platform_post_id: result.postId,
+          account_id: selectedAccount,
+          platform: "linkedin",
+          scheduled_at: scheduleDate ? scheduleDate.toISOString() : null,
+        });
       }
-
-      createPost({
-        user_id: user.id,
-        account_id: selectedAccount,
-        platform: activeTab,
-        ...data,
-        scheduled_at: scheduleDate ? scheduleDate.toISOString() : null,
-        status: scheduleDate ? "scheduled" : "draft",
-      });
-
-      toast.success("Post saved successfully!");
-      resetFormState();
+      resetComposer();
     } catch (error) {
-      if (error?.code === "REQUEST_CANCELED") {
-        toast.message("Operation canceled.");
-        return;
-      }
-
       console.error(error);
-      toast.error(error?.message || "Failed to create post");
+      toast.error(error.message || "Failed to submit post.");
     } finally {
-      submissionAbortControllerRef.current = null;
       setIsSubmitting(false);
-      setBulkProgress((currentState) => ({
-        ...currentState,
-        active: false,
-      }));
-      setBulkCancelRequested(false);
     }
   };
 
-  const handleGhostwrite = async () => {
-    const prompt = watch("description") || watch("title");
-    if (!prompt) {
-      return toast.error("Enter a topic first");
-    }
-
-    setIsGenerating(true);
-    try {
-      const response = await ghostwrite({
-        prompt,
-        platform: activeTab,
-        tone: "professional",
-      });
-      setValue("description", response.content);
-    } catch (error) {
-      console.error(error);
-      toast.error("Generation failed");
-    } finally {
-      setIsGenerating(false);
-    }
+  const resetComposer = () => {
+    reset(defaultValues);
+    setScheduleDate(null);
   };
+
+  const activeAccounts = activeTab === "youtube" ? youtubeAccounts : linkedinAccounts;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-20">
-      <div>
-        <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Composer</h1>
-        <p className="text-white/40 font-light">Import content, AI-enhance, and schedule.</p>
+    <div className="space-y-10 max-w-6xl mx-auto">
+      <div className="flex items-end justify-between gap-6 flex-wrap">
+        <div>
+          <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Composer</h1>
+          <p className="text-white/40 font-light max-w-2xl">
+            The UI shell stays live while backend publishing is rebuilt around Better Auth.
+          </p>
+        </div>
+        <div className="rounded-full border border-occium-gold/20 bg-occium-gold/5 px-4 py-2 text-xs uppercase tracking-[0.24em] text-occium-gold">
+          Local Engine
+        </div>
       </div>
 
-      <div className="flex gap-4 border-b border-white/10 pb-1">
-        <TabButton
-          active={activeTab === "youtube"}
-          onClick={() => setActiveTab("youtube")}
-          icon={Youtube}
-          label="YouTube"
-          color="text-red-500"
-        />
-        <TabButton
-          active={activeTab === "linkedin"}
-          onClick={() => setActiveTab("linkedin")}
-          icon={Linkedin}
-          label="LinkedIn"
-          color="text-blue-500"
-        />
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <motion.div
-          layout
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="lg:col-span-2"
-        >
-          <GlassCard className="min-h-[600px] flex flex-col">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 flex-1 flex flex-col">
-              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
-                <span className="text-white/40 text-sm">Post to:</span>
-                <select
-                  value={selectedAccount || ""}
-                  onChange={(event) => setSelectedAccount(event.target.value)}
-                  className="bg-transparent text-white font-medium outline-none flex-1"
-                >
-                  <option value="" disabled>
-                    Select Account
-                  </option>
-                  {accounts
-                    .filter((account) => account.platform === activeTab)
-                    .map((account) => (
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr),360px] gap-8">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <GlassCard>
+            <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-8">
+              <TabButton
+                active={activeTab === "youtube"}
+                onClick={() => setActiveTab("youtube")}
+                icon={Youtube}
+                label="YouTube"
+                color="text-red-400"
+              />
+              <TabButton
+                active={activeTab === "linkedin"}
+                onClick={() => setActiveTab("linkedin")}
+                icon={Linkedin}
+                label="LinkedIn"
+                color="text-blue-400"
+              />
+            </div>
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+              <div className="space-y-3">
+                <label className="text-white/50 text-xs font-medium uppercase tracking-[0.2em]">
+                  Destination
+                </label>
+                {activeAccounts.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-5 py-5 bg-white/[0.02]">
+                    <p className="text-white/60 text-sm">
+                      No {activeTab} placeholder accounts are connected yet.
+                    </p>
+                    <RouterLink
+                      to={workspaceRoutes.accounts}
+                      className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-4"
+                    >
+                      Open Accounts
+                    </RouterLink>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedAccount || ""}
+                    onChange={(event) => setSelectedAccount(event.target.value)}
+                    className="w-full glass-input rounded-xl px-4 py-3"
+                  >
+                    {activeAccounts.map((account) => (
                       <option key={account._id} value={account._id} className="text-black">
                         {account.account_name}
                       </option>
                     ))}
-                </select>
-                {accounts.filter((account) => account.platform === activeTab).length === 0 && (
-                  <RouterLink to={workspaceRoutes.accounts} className="text-occium-gold text-xs hover:underline">
-                    Connect Account
-                  </RouterLink>
+                  </select>
                 )}
               </div>
 
-              {activeTab === "youtube" && (
+              {activeTab === "youtube" ? (
                 <div className="space-y-6">
-                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-start gap-3">
-                    {helperStatus.available ? (
-                      <CheckCircle2 size={18} className="text-emerald-300 mt-0.5 flex-shrink-0" />
-                    ) : (
-                      <AlertCircle size={18} className="text-amber-300 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div>
-                      <p className="text-white text-sm font-medium">{helperLabel}</p>
-                      <p className="text-white/40 text-xs mt-1">
-                        Occium Engine is hosted on Render. This service handles source inspection, yt-dlp downloads, and the YouTube upload handoff autonomously.
-                      </p>
-                      {helperStatus.ytDlp?.version && (
-                        <p className="text-white/30 text-xs mt-1">yt-dlp version: {helperStatus.ytDlp.version}</p>
-                      )}
-                      {helperStatus.ytDlp && !helperStatus.ytDlp.available && (
-                        <p className="text-amber-200/80 text-xs mt-1">
-                          Helper is reachable, but yt-dlp is not installed or not on PATH yet.
-                        </p>
-                      )}
-                      {!helperStatus.available && (
-                        <div className="mt-3 space-y-2">
-                          <p className="text-white/55 text-xs">
-                            The cloud helper engine at {getHelperUrl()} is currently unreachable. This may be due to the free instance spinning down.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={refreshHelperStatus}
-                              className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors font-medium border border-white/5"
-                            >
-                              {helperLoading ? "Checking..." : "Retry Connection"}
-                            </button>
-                            <a 
-                              href={getHelperUrl()} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="px-4 py-2 rounded-lg bg-occium-gold/10 hover:bg-occium-gold/20 text-occium-gold text-xs transition-colors font-medium border border-occium-gold/10"
-                            >
-                              Wake Helper
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                      Source URL
+                    </label>
+                    <input
+                      {...register("source_url")}
+                      className="w-full glass-input rounded-lg px-4 py-3"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                    />
+                    <p className="text-white/30 text-xs">
+                      YouTube Metadata is automatically fetched via the Local Engine.
+                    </p>
                   </div>
 
-                  {selectedYouTubeAccount?.access_token && tokenHealth.status !== "healthy" && (
-                    <div
-                      className={`rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-4 ${
-                        tokenHealth.status === "expired"
-                          ? "border-rose-400/20 bg-rose-500/5 text-rose-200"
-                          : "border-amber-300/20 bg-amber-500/5 text-amber-100"
-                      }`}
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {tokenHealth.status === "expired"
-                            ? "This channel token has expired."
-                            : "This channel token is expiring soon."}
-                        </p>
-                        <p className="text-xs mt-1 opacity-80">
-                          Reconnect the channel to avoid upload handoff failures.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            setIsSubmitting(true);
-                            await connectYouTubeAccount();
-                            toast.success("Channel reconnected!");
-                          } catch (err) {
-                            toast.error("Reconnection failed");
-                          } finally {
-                            setIsSubmitting(false);
-                          }
-                        }}
-                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all whitespace-nowrap"
-                      >
-                        Reconnect Now
-                      </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Title
+                      </label>
+                      <input
+                        {...register("title")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                        placeholder="Title for the video"
+                      />
                     </div>
-                  )}
+
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Privacy
+                      </label>
+                      <select
+                        {...register("privacy_status")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                      >
+                        <option value="private" className="text-black">
+                          Private
+                        </option>
+                        <option value="unlisted" className="text-black">
+                          Unlisted
+                        </option>
+                        <option value="public" className="text-black">
+                          Public
+                        </option>
+                      </select>
+                    </div>
+                  </div>
 
                   <div className="space-y-2">
-                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex items-center gap-2">
-                      <Link size={14} /> Import from YouTube
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        {...register("source_url")}
-                        className="w-full glass-input rounded-lg px-4 py-3 font-mono text-sm"
-                        placeholder="Paste a YouTube video, playlist, or channel link..."
-                      />
-                    <button
-                      type="button"
-                      onClick={handleVideoMetadataFetch}
-                      disabled={isFetchingMetadata}
-                      className="px-6 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
-                    >
-                        {isFetchingMetadata ? "Fetching..." : "Fetch"}
-                    </button>
-                    {isFetchingMetadata && (
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex justify-between items-center">
+                      Description
                       <button
                         type="button"
-                        onClick={handleCancelActiveWork}
-                        className="px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-100 rounded-lg transition-colors font-medium text-sm whitespace-nowrap border border-rose-400/20"
+                        onClick={() => toast.info("Backend migration in progress. Action disabled.")}
+                        className="text-xs flex items-center gap-1 text-occium-gold hover:text-white transition-colors"
                       >
-                        Cancel
+                        <Wand2 size={12} />
+                        AI Enhance
                       </button>
-                    )}
-                  </div>
-                  {isFetchingMetadata && (
-                    <p className="text-white/35 text-xs">
-                      Inspecting the URL, retrying the Render helper if needed, and validating the source.
-                    </p>
-                  )}
-                  {metadataSource && (
-                    <p className="text-white/30 text-xs">
-                      Metadata source: {metadataSource}
-                        {metadataSource !== "python-helper" && " . Using cloud pipeline for extraction."}
-                      </p>
-                    )}
+                    </label>
+                    <textarea
+                      {...register("description")}
+                      rows={7}
+                      className="w-full glass-input rounded-lg px-4 py-3 leading-relaxed"
+                      placeholder="Video description..."
+                    />
                   </div>
 
-                  {videoPreview && (
-                    <div className="relative aspect-video rounded-xl overflow-hidden border border-white/10 group">
-                      <img src={videoPreview} alt="Preview" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <PlayCircle size={48} className="text-white" />
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Tags
+                      </label>
+                      <input
+                        {...register("tags_input")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                        placeholder="marketing, ai, systems"
+                      />
                     </div>
-                  )}
 
-                  {collectionSource ? (
-                    <div className="space-y-5">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <p className="text-white text-sm font-medium">{collectionSource.title}</p>
-                            <p className="text-white/40 text-xs mt-1">
-                              {collectionSource.entry_count} videos ready from {collectionSource.source_type}.
-                              {collectionSource.has_more && " Showing the first batch for faster selection."}
-                            </p>
-                          </div>
-                          <div className="text-white/50 text-xs uppercase tracking-[0.2em]">
-                            {selectedCollectionEntries.length} selected
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr,160px] gap-3 mt-4">
-                          <input
-                            value={collectionFilter}
-                            onChange={(event) => setCollectionFilter(event.target.value)}
-                            className="w-full glass-input rounded-lg px-4 py-3 text-sm"
-                            placeholder="Filter imported videos..."
-                          />
-                          <input
-                            type="number"
-                            min="1"
-                            value={bulkIntervalMinutes}
-                            onChange={(event) =>
-                              setBulkIntervalMinutes(Math.max(1, Number.parseInt(event.target.value || "1", 10)))
-                            }
-                            className="w-full glass-input rounded-lg px-4 py-3 text-sm"
-                            placeholder="Gap (mins)"
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          <button
-                            type="button"
-                            onClick={selectVisibleCollectionItems}
-                            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
-                          >
-                            Select visible
-                          </button>
-                          <button
-                            type="button"
-                            onClick={clearCollectionSelection}
-                            className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors"
-                          >
-                            Clear selection
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
-                        {filteredCollectionEntries.map((entry) => {
-                          const isSelected = selectedCollectionIds.includes(entry.id);
-
-                          return (
-                            <button
-                              key={entry.id}
-                              type="button"
-                              onClick={() => toggleCollectionItem(entry.id)}
-                              className={`w-full text-left rounded-2xl border p-3 transition-colors ${
-                                isSelected ? "border-occium-gold/40 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10"
-                              }`}
-                            >
-                              <div className="flex items-center gap-4">
-                                <div
-                                  className={`w-5 h-5 rounded-md border flex-shrink-0 ${
-                                    isSelected ? "bg-occium-gold border-occium-gold" : "border-white/20"
-                                  }`}
-                                />
-                                {entry.thumbnail ? (
-                                  <img
-                                    src={entry.thumbnail}
-                                    alt=""
-                                    className="w-24 h-14 object-cover rounded-lg border border-white/10"
-                                  />
-                                ) : (
-                                  <div className="w-24 h-14 rounded-lg border border-white/10 bg-white/5" />
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-white text-sm font-medium line-clamp-2">{entry.title}</p>
-                                  <div className="flex flex-wrap items-center gap-3 text-white/35 text-xs mt-2">
-                                    <span>#{entry.position}</span>
-                                    <span>{entry.uploader}</span>
-                                    <span>{formatVideoDuration(entry.duration)}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                        <p className="text-white/60 text-xs uppercase tracking-[0.2em] mb-3 font-bold">Bulk Strategy</p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Privacy</label>
-                            <select
-                              {...register("privacy_status")}
-                              className="w-full glass-input rounded-lg px-3 py-2 text-white bg-transparent text-sm"
-                            >
-                              <option value="private" className="text-black">
-                                Private
-                              </option>
-                              <option value="unlisted" className="text-black">
-                                Unlisted
-                              </option>
-                              <option value="public" className="text-black">
-                                Public
-                              </option>
-                            </select>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Global Tags</label>
-                            <input
-                              {...register("tags_input")}
-                              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
-                              placeholder="ai, branding"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-white/60 text-[10px] font-bold uppercase tracking-widest flex justify-between">
-                              Interval <span>(Min)</span>
-                            </label>
-                            <input
-                              type="number"
-                              value={bulkIntervalMinutes}
-                              onChange={(e) => setBulkIntervalMinutes(parseInt(e.target.value) || 0)}
-                              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
-                              min="1"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-white/20 text-[10px] mt-3 italic">
-                          Each video maintains its own metadata. Privacy, tags, and scheduling offset apply to the entire batch.
-                        </p>
-                      </div>
-
-                      {selectionSummary && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <CollectionMetric label="Selected Videos" value={selectionSummary.selectedCount} />
-                          <CollectionMetric label="Source Type" value={selectionSummary.sourceType} />
-                          <CollectionMetric label="Selected Runtime" value={selectionSummary.totalDurationLabel} />
-                        </div>
-                      )}
+                    <div className="space-y-2">
+                      <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
+                        Thumbnail URL
+                      </label>
+                      <input
+                        {...register("thumbnail_url")}
+                        className="w-full glass-input rounded-lg px-4 py-3"
+                        placeholder="Optional custom thumbnail"
+                      />
                     </div>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Title</label>
-                          <input
-                            {...register("title")}
-                            className="w-full glass-input rounded-lg px-4 py-3 text-lg font-medium"
-                            placeholder="Video Title"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Privacy</label>
-                          <select
-                            {...register("privacy_status")}
-                            className="w-full glass-input rounded-lg px-4 py-3 text-white bg-transparent"
-                          >
-                            <option value="private" className="text-black">
-                              Private
-                            </option>
-                            <option value="unlisted" className="text-black">
-                              Unlisted
-                            </option>
-                            <option value="public" className="text-black">
-                              Public
-                            </option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 flex-1">
-                        <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex justify-between items-center">
-                          Description
-                          <button
-                            type="button"
-                            onClick={handleGhostwrite}
-                            className="text-xs flex items-center gap-1 text-occium-gold hover:text-white transition-colors"
-                          >
-                            {isGenerating ? (
-                              <Loader2 className="animate-spin" size={12} />
-                            ) : (
-                              <Wand2 size={12} />
-                            )}{" "}
-                            AI Enhance
-                          </button>
-                        </label>
-                        <textarea
-                          {...register("description")}
-                          rows={6}
-                          className="w-full glass-input rounded-lg px-4 py-3 leading-relaxed"
-                          placeholder="Video description..."
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-white/60 text-xs font-medium uppercase tracking-wide">Tags</label>
-                        <input
-                          {...register("tags_input")}
-                          className="w-full glass-input rounded-lg px-4 py-3"
-                          placeholder="marketing, ai, growth"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {selectedYouTubeAccount?.token_expires_at && (
-                    <p className="text-white/30 text-xs">
-                      Channel token valid until {format(new Date(selectedYouTubeAccount.token_expires_at), "MMM d, h:mm a")}
-                      {tokenHealth.status === "expiring" && tokenHealth.expiresInMinutes !== null
-                        ? ` · ${tokenHealth.expiresInMinutes} minutes remaining`
-                        : ""}
-                    </p>
-                  )}
+                  </div>
                 </div>
-              )}
-
-              {activeTab === "linkedin" && (
+              ) : (
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex justify-between items-center">
                       Post Content
                       <button
                         type="button"
-                        onClick={handleGhostwrite}
+                        onClick={() => toast.info("Backend migration in progress. Action disabled.")}
                         className="text-xs flex items-center gap-1 text-occium-gold hover:text-white transition-colors"
                       >
-                        {isGenerating ? (
-                          <Loader2 className="animate-spin" size={12} />
-                        ) : (
-                          <Wand2 size={12} />
-                        )}{" "}
+                        <Wand2 size={12} />
                         Ghostwrite
                       </button>
                     </label>
@@ -1110,6 +324,7 @@ const NewPost = () => {
                       placeholder="What do you want to talk about?"
                     />
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
@@ -1121,6 +336,7 @@ const NewPost = () => {
                         placeholder="https://www.linkedin.com/posts/..."
                       />
                     </div>
+
                     <div className="space-y-2">
                       <label className="text-white/60 text-xs font-medium uppercase tracking-wide">
                         Link Title (Optional)
@@ -1132,8 +348,10 @@ const NewPost = () => {
                       />
                     </div>
                   </div>
+
                   <p className="text-white/30 text-xs leading-relaxed">
-                    LinkedIn image uploads are not wired yet. This composer currently supports text-only posts and article shares through the Render helper.
+                    Programmatic publishing is paused. This composer remains as the UI shell for the
+                    upcoming Better Auth migration.
                   </p>
                 </div>
               )}
@@ -1141,15 +359,21 @@ const NewPost = () => {
               <div className="mt-8 pt-8 border-t border-white/10">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${scheduleDate ? 'bg-occium-gold/10 text-occium-gold' : 'bg-white/5 text-white/40'}`}>
+                    <div
+                      className={`p-2 rounded-lg ${
+                        scheduleDate
+                          ? "bg-occium-gold/10 text-occium-gold"
+                          : "bg-white/5 text-white/40"
+                      }`}
+                    >
                       <CalendarIcon size={20} />
                     </div>
                     <div>
                       <p className="text-white font-medium text-sm">
-                        {scheduleDate ? format(scheduleDate, "MMM d, h:mm a") : "Post or Upload Now"}
+                        {scheduleDate ? format(scheduleDate, "MMM d, h:mm a") : "Publish later or now"}
                       </p>
                       <p className="text-white/40 text-xs">
-                        {scheduleDate ? "Scheduled release" : "Instant publication"}
+                        The schedule picker is preserved, but delivery is paused.
                       </p>
                     </div>
                   </div>
@@ -1169,109 +393,38 @@ const NewPost = () => {
                     >
                       Cancel
                     </button>
-                  ) }
+                  )}
                 </div>
 
-                {scheduleDate && collectionSource && selectedCollectionEntries.length > 1 && (
-                  <div className="mb-6 rounded-xl bg-occium-gold/5 border border-occium-gold/10 p-4">
-                    <p className="text-occium-gold text-[10px] uppercase tracking-widest font-bold mb-3 flex items-center gap-2">
-                       <Loader2 size={10} className="animate-spin" /> Batch Pipeline Timeline
-                    </p>
-                    <div className="space-y-3">
-                      {batchSchedulePreview.map((item, idx) => (
-                        <div key={item.id} className="flex items-center justify-between text-xs">
-                          <span className="text-white/60 truncate max-w-[180px]">
-                            {idx + 1}. {item.title}
-                          </span>
-                          <span className="text-occium-gold font-medium shrink-0">
-                            {format(new Date(item.publishAt), "MMM d, h:mm a")}
-                          </span>
-                        </div>
-                      ))}
-                      {selectedCollectionEntries.length > 4 && (
-                        <p className="text-white/30 text-[10px] italic pt-1 border-t border-white/5">
-                          + {selectedCollectionEntries.length - 4} more videos in the queue
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <div className="text-white/60 text-sm flex items-center gap-2">
-                    {activeTab === "youtube" && !helperStatus.available && (
-                      <span className="flex items-center gap-1.5 text-amber-200/60 text-xs">
-                        <Loader2 size={12} className="animate-spin" /> Engine waking...
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={resetComposer}
+                    className="px-5 py-3 rounded-full border border-white/10 bg-white/5 text-white/80 text-sm font-medium hover:bg-white/10 transition-colors"
+                  >
+                    Reset Form
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !selectedAccount}
+                    className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
+                  >
+                    {isSubmitting ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="animate-spin">⏳</span> Working...
                       </span>
+                    ) : scheduleDate ? (
+                      activeTab === "youtube"
+                        ? "Schedule Upload"
+                        : "Schedule Post"
+                    ) : activeTab === "youtube" ? (
+                      "Upload to YouTube"
+                    ) : (
+                      "Post Now"
                     )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {(isSubmitting || bulkProgress.active) && (
-                      <button
-                        type="button"
-                        onClick={handleCancelActiveWork}
-                        className="px-5 py-3 rounded-full border border-white/10 bg-white/5 text-white/80 text-sm font-medium hover:bg-white/10 transition-colors"
-                      >
-                        {bulkProgress.active ? "Stop After Current" : "Cancel Request"}
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={
-                        isSubmitting ||
-                        (activeTab === "youtube" && !canUploadToYouTube) ||
-                        (activeTab === "linkedin" && !canPostToLinkedIn)
-                      }
-                      className="bg-white text-black px-10 py-3 rounded-full font-medium hover:scale-105 transition-transform shadow-lg shadow-white/5 disabled:opacity-60 disabled:scale-100"
-                    >
-                      {isSubmitting ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Loader2 size={16} className="animate-spin" /> Working...
-                        </span>
-                      ) : scheduleDate ? (
-                        collectionSource ? `Schedule ${selectedCollectionEntries.length || 0} Videos` : "Schedule Post"
-                      ) : activeTab === "youtube" ? (
-                        collectionSource ? `Upload ${selectedCollectionEntries.length || 0} Videos` : "Upload to YouTube"
-                      ) : (
-                        "Post Now"
-                      )}
-                    </button>
-                  </div>
+                  </button>
                 </div>
               </div>
-              {activeTab === "youtube" && bulkProgress.active && (
-                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3 text-xs text-white/55">
-                    <span>Bulk upload progress</span>
-                    <span>
-                      {bulkProgress.completed}/{bulkProgress.total}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden mt-3">
-                    <div
-                      className="h-full bg-occium-gold transition-all duration-300"
-                      style={{
-                        width: `${bulkProgress.total ? (bulkProgress.completed / bulkProgress.total) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                  {bulkProgress.currentTitle && (
-                    <p className="text-white/40 text-xs mt-3 line-clamp-1">
-                      Processing: {bulkProgress.currentTitle}
-                    </p>
-                  )}
-                  {bulkCancelRequested && (
-                    <p className="text-amber-200/80 text-xs mt-2">
-                      Cancel requested. The pipeline will stop after the current upload completes.
-                    </p>
-                  )}
-                </div>
-              )}
-              {activeTab === "youtube" && !helperStatus.available && (
-                <p className="text-amber-200/80 text-xs mt-2">
-                  Upload is paused until the Helper Engine is online. Update connection in Settings if needed.
-                </p>
-              )}
             </form>
           </GlassCard>
         </motion.div>
@@ -1295,8 +448,14 @@ const NewPost = () => {
             </div>
             <AnimatePresence>
               {scheduleDate && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                  <label className="text-white/60 text-xs uppercase tracking-wide mb-2 block">Time</label>
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <label className="text-white/60 text-xs uppercase tracking-wide mb-2 block">
+                    Time
+                  </label>
                   <input
                     type="time"
                     className="w-full glass-input rounded-lg px-3 py-3 text-center text-lg tracking-widest"
@@ -1318,79 +477,44 @@ const NewPost = () => {
             </AnimatePresence>
           </GlassCard>
 
-          {activeTab === "youtube" && collectionSource && (
-            <GlassCard>
-              <h3 className="text-lg font-medium text-white mb-4">Batch Plan</h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <CollectionMetric
-                    label="Ready To Upload"
-                    value={selectionSummary?.selectedCount || 0}
-                  />
-                  <CollectionMetric
-                    label="Gap"
-                    value={`${bulkIntervalMinutes} min`}
-                  />
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-white/55 text-xs uppercase tracking-[0.18em] mb-2">Schedule Preview</p>
-                  {batchSchedulePreview.length === 0 ? (
-                    <p className="text-white/40 text-sm">
-                      Select at least one video to preview the first publish slots.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {batchSchedulePreview.map((item, index) => (
-                        <div key={item.id} className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-white text-sm line-clamp-2">{item.title}</p>
-                            <p className="text-white/30 text-xs mt-1">Video {index + 1}</p>
-                          </div>
-                          <div className="text-right text-xs text-white/45 shrink-0">
-                            {item.publishAt
-                              ? format(new Date(item.publishAt), "MMM d, h:mm a")
-                              : "Uploads immediately"}
-                          </div>
-                        </div>
-                      ))}
-                      {selectedCollectionEntries.length > batchSchedulePreview.length && (
-                        <p className="text-white/30 text-xs">
-                          +{selectedCollectionEntries.length - batchSchedulePreview.length} more videos follow the same interval pattern.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+          <GlassCard>
+            <h3 className="text-lg font-medium text-white mb-4">Preview</h3>
+            {previewThumbnail ? (
+              <img
+                src={previewThumbnail}
+                alt=""
+                className="w-full aspect-video object-cover rounded-2xl border border-white/10"
+              />
+            ) : (
+              <div className="w-full aspect-video rounded-2xl border border-dashed border-white/10 bg-white/[0.02] flex items-center justify-center text-white/25 text-sm">
+                Thumbnail preview
               </div>
-            </GlassCard>
-          )}
+            )}
 
-          {activeTab === "youtube" && (
-            <GlassCard>
-              <h3 className="text-lg font-medium text-white mb-4">Pipeline Status</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${helperStatus.available ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 animate-pulse'}`} />
-                  <span className="text-sm text-white/60">
-                    {helperStatus.available ? 'Render Helper Active' : 'Helper Spinning Up...'}
-                  </span>
-                </div>
-                <div className="space-y-2 text-xs text-white/30 leading-relaxed">
-                  <p>• YouTube downloads are handled via Render Cloud.</p>
-                  <p>• Scheduled videos stay on Google servers until release.</p>
-                  <p>• Local helper.bat is no longer required.</p>
-                </div>
-              </div>
-              {youtubeAccounts.length === 0 && (
-                <RouterLink
-                  to={workspaceRoutes.accounts}
-                  className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5"
-                >
-                  Connect a YouTube channel first
-                </RouterLink>
-              )}
-            </GlassCard>
-          )}
+            <div className="mt-5 space-y-3">
+              <p className="text-white text-base font-medium">
+                {currentTitle?.trim() || "Untitled draft"}
+              </p>
+              <p className="text-white/40 text-sm leading-relaxed">
+                {currentDescription?.trim() || "Start writing to populate the live preview panel."}
+              </p>
+            </div>
+          </GlassCard>
+
+          <GlassCard>
+            <h3 className="text-lg font-medium text-white mb-4">Migration State</h3>
+            <div className="space-y-3 text-sm text-white/55 leading-relaxed">
+              <p>Occium Local Engine is active and connected to your social accounts.</p>
+              <p>YouTube uploads and LinkedIn posts are processed through the local automation layer.</p>
+              <p>Check the Dashboard for real-time status of your scheduled deliveries.</p>
+            </div>
+            <RouterLink
+              to={workspaceRoutes.accounts}
+              className="inline-flex items-center gap-2 text-occium-gold hover:text-white transition-colors mt-5"
+            >
+              Manage placeholder accounts
+            </RouterLink>
+          </GlassCard>
         </div>
       </div>
     </div>
@@ -1399,6 +523,7 @@ const NewPost = () => {
 
 const TabButton = ({ active, onClick, icon: Icon, label, color }) => (
   <button
+    type="button"
     onClick={onClick}
     className={`relative px-6 py-3 transition-all duration-300 group flex items-center gap-2 ${
       active ? "text-white" : "text-white/40 hover:text-white"
@@ -1415,32 +540,24 @@ const TabButton = ({ active, onClick, icon: Icon, label, color }) => (
   </button>
 );
 
-const CollectionMetric = ({ label, value }) => (
-  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-    <p className="text-white/35 text-xs uppercase tracking-[0.18em]">{label}</p>
-    <p className="text-white text-lg font-medium mt-3">{value}</p>
-  </div>
-);
+function getYouTubeVideoId(url) {
+  try {
+    const parsedUrl = new URL(url);
 
-const formatVideoDuration = (seconds) => {
-  if (!seconds || Number.isNaN(seconds)) {
-    return "Duration n/a";
+    if (parsedUrl.hostname.includes("youtu.be")) {
+      return parsedUrl.pathname.slice(1) || null;
+    }
+
+    const directId = parsedUrl.searchParams.get("v");
+    if (directId) {
+      return directId;
+    }
+
+    const shortsMatch = parsedUrl.pathname.match(/\/shorts\/([^/?]+)/);
+    return shortsMatch?.[1] || null;
+  } catch {
+    return null;
   }
-
-  const totalSeconds = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const remainingSeconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return [hours, minutes, remainingSeconds]
-      .map((value) => String(value).padStart(2, "0"))
-      .join(":");
-  }
-
-  return [minutes, remainingSeconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
-};
+}
 
 export default NewPost;

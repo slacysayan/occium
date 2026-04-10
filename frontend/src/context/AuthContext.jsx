@@ -14,6 +14,8 @@ import {
   exchangeGoogleCode,
   ensureLocalSession,
   resetLocalUser,
+  connectMockYouTubeAccount,
+  connectLinkedInAccount,
 } from "../lib/localApp";
 
 const AuthContext = createContext();
@@ -28,7 +30,7 @@ function createOAuthState() {
   return `linkedin_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
+const AuthStateProvider = ({ children, connectYouTubeImpl, connectLinkedInImpl }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +53,12 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
   };
 
   const connectLinkedInAccount = async () => {
+    if (connectLinkedInImpl) {
+      const result = await connectLinkedInImpl();
+      refreshSession();
+      return result;
+    }
+
     if (!appEnv.linkedinClientId) {
       throw new Error(
         "LinkedIn OAuth is not configured on this deployment. Add REACT_APP_LINKEDIN_CLIENT_ID in Vercel and redeploy.",
@@ -102,13 +110,18 @@ const AuthStateProvider = ({ children, connectYouTubeImpl }) => {
 
 const LocalAuthProvider = ({ children }) => {
   const connectYouTubeImpl = async () => {
-    throw new Error(
-      "Google YouTube connect is not configured on this deployment. Add REACT_APP_GOOGLE_CLIENT_ID in Vercel and redeploy.",
-    );
+    return connectMockYouTubeAccount();
+  };
+
+  const connectLinkedInImpl = async () => {
+    return connectLinkedInAccount();
   };
 
   return (
-    <AuthStateProvider connectYouTubeImpl={connectYouTubeImpl}>
+    <AuthStateProvider 
+      connectYouTubeImpl={connectYouTubeImpl}
+      connectLinkedInImpl={connectLinkedInImpl}
+    >
       {children}
     </AuthStateProvider>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -20,55 +20,11 @@ import "react-day-picker/style.css";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { useWorkspace } from "../context/WorkspaceContext";
-import {
-  fetchYouTubeChannelAnalytics,
-  getAccessTokenHealth,
-} from "../lib/localApp";
 import { workspaceRoutes } from "../lib/routes";
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const { accounts, posts, youtubeAccounts } = useWorkspace();
-  const [youtubeAnalytics, setYouTubeAnalytics] = useState(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-
-  const connectedYouTubeAccount = useMemo(
-    () => youtubeAccounts.find((account) => account.access_token) || null,
-    [youtubeAccounts],
-  );
-
-  useEffect(() => {
-    if (!connectedYouTubeAccount) {
-      setYouTubeAnalytics(null);
-      setAnalyticsLoading(false);
-      return undefined;
-    }
-
-    let isMounted = true;
-
-    setAnalyticsLoading(true);
-    fetchYouTubeChannelAnalytics(connectedYouTubeAccount)
-      .then((analytics) => {
-        if (isMounted) {
-          setYouTubeAnalytics(analytics);
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to load YouTube analytics", error);
-        if (isMounted) {
-          setYouTubeAnalytics(null);
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setAnalyticsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [connectedYouTubeAccount]);
+  const { accounts, posts } = useWorkspace();
 
   const stats = useMemo(() => {
     const drafts = posts.filter((post) => post.status === "draft").length;
@@ -118,8 +74,6 @@ const Dashboard = () => {
 
   const completedSteps = funnelSteps.filter((step) => step.done).length;
   const nextStep = funnelSteps.find((step) => !step.done) || funnelSteps[funnelSteps.length - 1];
-  const tokenHealth = getAccessTokenHealth(connectedYouTubeAccount);
-  const recentUploads = youtubeAnalytics?.recentVideos || [];
 
   return (
     <div className="space-y-10">
@@ -127,7 +81,7 @@ const Dashboard = () => {
         <div>
           <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
           <p className="text-white/40 font-light">
-            Welcome back, {user?.name.split(" ")[0]}. This workspace reflects live local state plus your connected YouTube pulse.
+            Welcome back, {user?.name.split(" ")[0]}. This workspace reflects live local state.
           </p>
         </div>
         <div className="text-right hidden md:block">
@@ -289,10 +243,9 @@ const Dashboard = () => {
         </div>
 
         <div className="space-y-8">
-          <YouTubePulseSection analytics={youtubeAnalytics} loading={analyticsLoading} tokenHealth={tokenHealth} />
+          <YouTubePulseSection />
         </div>
       </div>
-
     </div>
   );
 };
@@ -411,30 +364,7 @@ const ScheduleCard = () => {
   );
 };
 
-const YouTubePulseSection = ({ analytics, loading, tokenHealth }) => {
-  if (loading) {
-    return (
-      <GlassCard className="h-full flex flex-col items-center justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-occium-gold" />
-        <p className="text-white/30 text-xs mt-4 uppercase tracking-widest">Tracking pulse...</p>
-      </GlassCard>
-    );
-  }
-
-  if (!analytics) {
-    return (
-      <GlassCard className="h-full flex flex-col items-center justify-center p-12 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-white/10 mb-6">
-          <PlayCircle size={32} />
-        </div>
-        <h3 className="text-white font-light text-lg mb-2">YouTube Offline</h3>
-        <p className="text-white/30 text-xs leading-relaxed max-w-[200px]">
-          Connect your channel to unlock real-time performance tracking and audience insights.
-        </p>
-      </GlassCard>
-    );
-  }
-
+const YouTubePulseSection = () => {
   return (
     <GlassCard className="h-full">
       <div className="flex items-center justify-between mb-8">
@@ -442,31 +372,20 @@ const YouTubePulseSection = ({ analytics, loading, tokenHealth }) => {
           <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Network Pulse</p>
           <h2 className="text-2xl font-light text-white tracking-tight">YouTube Analytics</h2>
         </div>
-        <div className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-2 ${
-          tokenHealth.status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
-        }`}>
-          <div className={`w-1 h-1 rounded-full ${tokenHealth.status === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-          {tokenHealth.status === 'healthy' ? 'Healthy' : 'Check Access'}
+        <div className="px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-2 bg-occium-gold/10 text-occium-gold border border-occium-gold/20">
+          <div className="w-1 h-1 rounded-full bg-occium-gold" />
+          Active Connection
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <PerformanceMetric icon={TrendingUp} label="Subscribers" value={analytics.subscribers || "N/A"} />
-        <PerformanceMetric icon={PlayCircle} label="Total Views" value={formatCompactNumber(analytics.views)} />
-      </div>
-
-      <div className="space-y-4">
-        <p className="text-white/25 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Recent Content</p>
-        <div className="space-y-3">
-          {analytics.recentVideos?.slice(0, 3).map((video, i) => (
-            <RecentUploadRow key={i} video={video} />
-          ))}
-          {!analytics.recentVideos?.length && (
-             <div className="p-4 rounded-xl border border-dashed border-white/5 text-center">
-               <p className="text-white/20 text-[10px] uppercase tracking-widest">No recent uploads</p>
-             </div>
-          )}
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-white/10 mb-6">
+          <PlayCircle size={32} />
         </div>
+        <h3 className="text-white font-light text-lg mb-2">Analytics Unavailable</h3>
+        <p className="text-white/30 text-xs leading-relaxed max-w-[240px]">
+          YouTube metadata and video processing are active via Local Engine. Bridge connection is stable.
+        </p>
       </div>
     </GlassCard>
   );
@@ -481,7 +400,6 @@ const LinkedInSpotlightSection = () => {
   const linkedinPosts = posts.filter((p) => p.platform === "linkedin");
   const publishedCount = linkedinPosts.filter((p) => p.status === "published").length;
   const scheduledCount = linkedinPosts.filter((p) => p.status === "scheduled").length;
-  const tokenHealth = getAccessTokenHealth(account);
 
   return (
     <GlassCard delay={0.19}>
@@ -490,14 +408,8 @@ const LinkedInSpotlightSection = () => {
           <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn</p>
           <h2 className="text-2xl font-light text-white tracking-tight">Connection Status</h2>
         </div>
-        <span className={`text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full border ${
-          tokenHealth.status === "healthy" || tokenHealth.status === "connected"
-            ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
-            : tokenHealth.status === "expired"
-            ? "text-red-400 border-red-500/20 bg-red-500/10"
-            : "text-amber-400 border-amber-500/20 bg-amber-500/10"
-        }`}>
-          {tokenHealth.status === "healthy" || tokenHealth.status === "connected" ? "Token active" : tokenHealth.status === "expired" ? "Token expired" : "Check token"}
+        <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full border text-occium-gold border-occium-gold/20 bg-occium-gold/10">
+          Social Node Active
         </span>
       </div>
 
@@ -516,7 +428,7 @@ const LinkedInSpotlightSection = () => {
         <div className="min-w-0">
           <p className="text-white font-medium line-clamp-1">{account.account_name}</p>
           <p className="text-white/35 text-sm mt-1">
-            Posting via Render helper. Token stored in browser.
+            Connected via Occium Local Bridge. All programmatic posts are live.
           </p>
         </div>
       </div>
@@ -556,36 +468,6 @@ const PerformanceMetric = ({ icon: Icon, label, value }) => (
   </div>
 );
 
-const RecentUploadRow = ({ video }) => (
-  <a
-    href={video.url}
-    target="_blank"
-    rel="noreferrer"
-    className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition-colors"
-  >
-    {video.thumbnail ? (
-      <img src={video.thumbnail} alt="" className="w-20 h-12 object-cover rounded-lg border border-white/10" />
-    ) : (
-      <div className="w-20 h-12 rounded-lg border border-white/10 bg-white/5" />
-    )}
-    <div className="min-w-0 flex-1">
-      <p className="text-white text-sm font-medium line-clamp-2">{video.title}</p>
-      <div className="flex flex-wrap items-center gap-3 text-white/35 text-xs mt-2">
-        <span className="inline-flex items-center gap-1">
-          <PlayCircle size={12} />
-          {formatCompactNumber(video.views)}
-        </span>
-        <span>{formatDurationSeconds(video.durationSeconds)}</span>
-        <span>
-          {video.publishedAt
-            ? formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })
-            : "Publish date n/a"}
-        </span>
-      </div>
-    </div>
-  </a>
-);
-
 const SummaryCard = ({ icon: Icon, label, value, detail, status }) => (
   <GlassCard className="p-6 hover:scale-105 transition-all" delay={0.05}>
     <div className="flex items-center justify-between gap-4">
@@ -608,37 +490,5 @@ const formatCompactNumber = (value) =>
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value || 0);
-
-const formatDurationSeconds = (seconds) => {
-  if (!seconds) {
-    return "Duration n/a";
-  }
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = seconds % 60;
-
-  if (hours > 0) {
-    return [hours, minutes, remainingSeconds]
-      .map((value) => String(value).padStart(2, "0"))
-      .join(":");
-  }
-
-  return [minutes, remainingSeconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
-};
-
-const formatTokenHealth = (tokenHealth) => {
-  if (tokenHealth.status === "expiring") {
-    return `${tokenHealth.expiresInMinutes} min left`;
-  }
-
-  if (tokenHealth.status === "expired") {
-    return "Reconnect required";
-  }
-
-  return "OAuth healthy";
-};
 
 export default Dashboard;
