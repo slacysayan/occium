@@ -29,7 +29,6 @@ import {
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { appEnv } from "../config/env";
-import { getLocalHelperStatus } from "../lib/localApp";
 
 /* ─────────────────────────────────────────────
    Local-storage keys for persisted settings
@@ -102,7 +101,6 @@ const TABS = [
   { id: "overview", label: "Overview", icon: Globe },
   { id: "api_keys", label: "API Keys", icon: Key },
   { id: "integrations", label: "Integrations", icon: Plug },
-  { id: "helper", label: "Render Engine", icon: Server },
   { id: "tasks", label: "Download Tasks", icon: Download },
 ];
 
@@ -111,8 +109,7 @@ const TABS = [
 ───────────────────────────────────────────── */
 const Settings = () => {
   const { user } = useAuth();
-  const { helperStatus, helperLoading, helperCheckedAt, refreshHelperStatus, accounts } =
-    useWorkspace();
+  const { accounts } = useWorkspace();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [settings, setSettings] = useState(readSettings);
@@ -151,23 +148,7 @@ const Settings = () => {
     setTasks(next);
   };
 
-  /* Helper URL live-test */
-  const [testingHelper, setTestingHelper] = useState(false);
-  const testHelperUrl = async () => {
-    setTestingHelper(true);
-    try {
-      const res = await getLocalHelperStatus();
-      if (res.available) {
-        toast.success(`Helper reachable — yt-dlp ${res.ytDlp?.version || "unknown"}`);
-      } else {
-        toast.error("Helper is offline or not reachable");
-      }
-    } catch {
-      toast.error("Could not reach helper");
-    } finally {
-      setTestingHelper(false);
-    }
-  };
+
 
   /* ── computed ── */
   const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
@@ -187,7 +168,7 @@ const Settings = () => {
       <div>
         <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Settings</h1>
         <p className="text-white/40 font-light">
-          Configure your workspace, API references, and Render-backed pipeline.
+          Configure your workspace, API keys, and integrations.
         </p>
       </div>
 
@@ -253,17 +234,6 @@ const Settings = () => {
                   linkedinAccounts={linkedinAccounts}
                   settings={settings}
                   onSave={saveSettings}
-                />
-              )}
-
-              {activeTab === "helper" && (
-                <HelperTab
-                  helperStatus={helperStatus}
-                  helperLoading={helperLoading}
-                  helperCheckedAt={helperCheckedAt}
-                  refreshHelperStatus={refreshHelperStatus}
-                  testingHelper={testingHelper}
-                  testHelperUrl={testHelperUrl}
                 />
               )}
 
@@ -333,13 +303,7 @@ const OverviewTab = ({
           color: "text-blue-400",
           action: "integrations",
         },
-        {
-          label: "Helper Status",
-          value: helperStatus.available ? "Online" : "Offline",
-          icon: Server,
-          color: helperStatus.available ? "text-emerald-400" : "text-amber-400",
-          action: "helper",
-        },
+
         {
           label: "Active Tasks",
           value: (taskCounts.running || 0) + (taskCounts.queued || 0),
@@ -379,15 +343,15 @@ const OverviewTab = ({
           },
           {
             step: "2",
-            title: "Paste source URL → local Python helper fetches metadata",
-            desc: "yt-dlp scrapes title, thumbnail, duration. No API key consumed.",
-            status: helperStatus.available ? "done" : "pending",
+            title: "Videos are imported and stored locally in browser",
+            desc: "All data persists in localStorage. Works completely offline.",
+            status: "done",
           },
           {
             step: "3",
-            title: "Download + upload via Google Data API v3",
-            desc: "Helper downloads mp4 locally, re-uploads to your channel with your OAuth token. Zero extra cost.",
-            status: "info",
+            title: "Backend integration planned",
+            desc: "Via MCP bridge or custom API - to be configured in next phase.",
+            status: "pending",
           },
           {
             step: "4",
@@ -465,8 +429,8 @@ const ApiKeysTab = ({ showKeys, toggleKey }) => {
 
         <SectionHeader
           icon={ShieldCheck}
-          title="Vercel Environment (Frontend)"
-          subtitle="These values are read-only and set via Vercel environment variables at build time."
+          title="Environment Variables"
+          subtitle="These values are set at build time and control OAuth integrations."
         />
 
         <div className="space-y-5">
@@ -481,16 +445,6 @@ const ApiKeysTab = ({ showKeys, toggleKey }) => {
             configured={envStatus.googleClientId}
           />
           <ApiKeyInput
-            label="YouTube Data API v3 Key"
-            name="youtubeApiKey"
-            value={appEnv.youtubeApiKey || ""}
-            show={showKeys.youtubeApiKey}
-            onToggle={() => toggleKey("youtubeApiKey")}
-            readOnly
-            hint="REACT_APP_YOUTUBE_API_KEY — Metadata fallback for view counts, thumbnails. Uploads use OAuth token directly."
-            configured={envStatus.youtubeApiKey}
-          />
-          <ApiKeyInput
             label="LinkedIn Client ID"
             name="linkedinClientId"
             value={appEnv.linkedinClientId || ""}
@@ -500,44 +454,7 @@ const ApiKeysTab = ({ showKeys, toggleKey }) => {
             hint="REACT_APP_LINKEDIN_CLIENT_ID — Used to initiate LinkedIn OAuth flow from the frontend."
             configured={envStatus.linkedinClientId}
           />
-          <ApiKeyInput
-            label="Helper URL"
-            name="helperUrl"
-            value={appEnv.localHelperUrl || ""}
-            show={true}
-            onToggle={() => {}}
-            readOnly
-            hint="REACT_APP_LOCAL_HELPER_URL — Render helper endpoint for uploads, token exchange, and LinkedIn posting."
-            configured={envStatus.helperUrl}
-          />
         </div>
-      </GlassCard>
-
-      <GlassCard>
-        <SectionHeader
-          icon={Server}
-          title="Render Environment (Backend)"
-          subtitle="These secrets live on the Render helper and cannot be viewed from the frontend."
-        />
-        <div className="space-y-4">
-          {[
-            { label: "GOOGLE_CLIENT_ID", desc: "Google OAuth client ID (must match Vercel value)" },
-            { label: "GOOGLE_CLIENT_SECRET", desc: "Google OAuth client secret for token exchange" },
-            { label: "LINKEDIN_CLIENT_ID", desc: "LinkedIn app client ID (must match Vercel value)" },
-            { label: "LINKEDIN_CLIENT_SECRET", desc: "LinkedIn app client secret for token exchange" },
-          ].map(({ label, desc }) => (
-            <div key={label} className="flex items-start gap-4 p-3 rounded-xl bg-white/5 border border-white/10">
-              <Key size={14} className="text-white/20 mt-0.5 shrink-0" />
-              <div>
-                <code className="text-white/70 text-xs font-mono">{label}</code>
-                <p className="text-white/35 text-xs mt-1">{desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-white/25 text-xs mt-4 leading-relaxed">
-          Set these in your Render service dashboard under Environment. They are never exposed to the browser.
-        </p>
       </GlassCard>
     </div>
   );
@@ -743,101 +660,7 @@ const IntegrationCard = ({ integration }) => {
 /* ═══════════════════════════════════════════
    Local Helper Tab
 ═══════════════════════════════════════════ */
-const HelperTab = ({
-  helperStatus,
-  helperLoading,
-  helperCheckedAt,
-  refreshHelperStatus,
-  testingHelper,
-  testHelperUrl,
-}) => (
-  <div className="space-y-6">
-    <GlassCard>
-      <SectionHeader icon={Server} title="Render Helper" subtitle="Cloud engine for yt-dlp inspection, YouTube uploads, LinkedIn posting, and LinkedIn scheduling." />
 
-      {/* Status */}
-      <div
-        className={`flex items-start gap-4 p-4 rounded-xl border ${
-          helperStatus.available
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-amber-400/20 bg-amber-500/5"
-        }`}
-      >
-        {helperStatus.available ? (
-          <CheckCircle2 size={20} className="text-emerald-400 shrink-0 mt-0.5" />
-        ) : (
-          <AlertCircle size={20} className="text-amber-400 shrink-0 mt-0.5" />
-        )}
-        <div className="flex-1">
-          <p className="text-white font-medium text-sm">
-            {helperStatus.available ? "Render engine is online" : "Render engine is offline"}
-          </p>
-          {helperStatus.available && helperStatus.ytDlp && (
-            <p className="text-white/50 text-xs mt-1">
-              yt-dlp {helperStatus.ytDlp.version} · Python {helperStatus.pythonVersion}
-            </p>
-          )}
-          {helperCheckedAt && (
-            <p className="text-white/25 text-xs mt-1">
-              Last checked: {new Date(helperCheckedAt).toLocaleTimeString()}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={refreshHelperStatus}
-          disabled={helperLoading}
-          className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-        >
-          <RefreshCw size={14} className={`text-white ${helperLoading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-
-    </GlassCard>
-
-    <GlassCard>
-      <h3 className="text-white font-medium mb-4 flex items-center gap-2">
-        <Terminal size={16} className="text-white/40" /> Deployment Contract
-      </h3>
-      <div className="space-y-3">
-        <div className="p-3 bg-black/40 rounded-xl border border-white/10">
-          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Vercel</p>
-          <code className="text-white text-sm font-mono">REACT_APP_LOCAL_HELPER_URL={appEnv.localHelperUrl}</code>
-        </div>
-        <div className="p-3 bg-black/40 rounded-xl border border-white/10">
-          <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Render</p>
-          <code className="text-white/80 text-xs font-mono block leading-relaxed">
-            LINKEDIN_CLIENT_ID=&lt;linkedin client id&gt;<br />
-            LINKEDIN_CLIENT_SECRET=&lt;linkedin client secret&gt;
-          </code>
-        </div>
-      </div>
-
-      <div className="mt-6 space-y-2">
-        <p className="text-white/50 text-xs uppercase tracking-widest mb-3">Helper API Endpoints</p>
-        {[
-          { method: "GET", path: "/health", desc: "Status check — returns yt-dlp version" },
-          { method: "POST", path: "/api/youtube/source", desc: "Inspect any video, playlist or channel URL" },
-          { method: "POST", path: "/api/youtube/metadata", desc: "Single video metadata extraction" },
-          { method: "POST", path: "/api/youtube/upload", desc: "Download via yt-dlp → upload to YouTube" },
-        ].map(({ method, path, desc }) => (
-          <div key={path} className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-            <span
-              className={`text-xs font-bold font-mono shrink-0 mt-0.5 ${
-                method === "GET" ? "text-emerald-400" : "text-blue-400"
-              }`}
-            >
-              {method}
-            </span>
-            <div>
-              <code className="text-white/80 text-xs font-mono">{path}</code>
-              <p className="text-white/35 text-xs mt-0.5">{desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </GlassCard>
-  </div>
-);
 
 /* ═══════════════════════════════════════════
    Download Tasks Tab
