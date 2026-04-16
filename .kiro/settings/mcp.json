@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "railway": {
+      "command": "npx",
+      "args": ["-y", "@railway/mcp-server"],
+      "disabled": false,
+      "autoApprove": ["list_projects", "list_services", "get_logs", "list_environments", "list_variables"]
+    },
+    "vercel": {
+      "command": "npx",
+      "args": ["-y", "mcp-vercel"],
+      "disabled": false,
+      "autoApprove": ["list_projects", "get_deployment", "list_deployments", "get_project"]
+    }
+  }
+}
