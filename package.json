@@ -3,9 +3,10 @@
   "private": true,
   "scripts": {
     "install:frontend": "npm install --prefix frontend",
-    "install:helper": "python -m pip install -r local-helper/requirements.txt",
-    "start": "npm start --prefix frontend",
-    "start:helper": "python local-helper/server.py",
-    "build": "npm run build --prefix frontend"
+    "start:frontend": "npm start --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "supabase": "^2.91.3"
   }
 }

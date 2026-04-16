@@ -8,7 +8,7 @@ const router = Router();
 
 // GET /api/posts/:id
 router.get("/:id", requireAuth, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   try {
     const [post] = await db
       .select()
@@ -76,15 +76,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
 // PATCH /api/posts/:id
 router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
-  const { id } = req.params;
-
+  const id = req.params.id as string;
   try {
     const [post] = await db
       .update(posts)
       .set({ ...req.body, scheduledAt: req.body.scheduledAt ? new Date(req.body.scheduledAt) : undefined })
       .where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)))
       .returning();
-
     if (!post) return res.status(404).json({ error: "Post not found" });
     res.json(post);
   } catch (err) {
@@ -94,13 +92,9 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
 
 // DELETE /api/posts/:id
 router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
-  const { id } = req.params;
-
+  const id = req.params.id as string;
   try {
-    await db
-      .delete(posts)
-      .where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)));
-
+    await db.delete(posts).where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)));
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete post" });

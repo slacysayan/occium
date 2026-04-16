@@ -29,7 +29,7 @@ passport.use(
         "https://www.googleapis.com/auth/youtube.readonly",
       ],
     },
-    async (_accessToken, refreshToken, params, profile, done) => {
+    async (_accessToken: string, refreshToken: string, params: { expires_in?: number }, profile: { emails?: {value:string}[]; displayName?: string; photos?: {value:string}[] }, done: (err: Error | null, user?: { userId: string }) => void) => {
       try {
         const email = profile.emails?.[0]?.value ?? "";
         const name = profile.displayName ?? "";
