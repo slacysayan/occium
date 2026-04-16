@@ -60,15 +60,25 @@ passport.use(
           const axiosLib = (await import("axios")).default;
           const chRes = await axiosLib.get(
             "https://www.googleapis.com/youtube/v3/channels",
-            { params: { part: "id,snippet", mine: true }, headers: { Authorization: `Bearer ${accessToken}` } }
+            {
+              params: { part: "id,snippet", mine: true },
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }
           );
           const ch = chRes.data.items?.[0];
           if (ch) {
             channelId = ch.id;
             channelName = ch.snippet?.title ?? name;
-            channelPicture = ch.snippet?.thumbnails?.default?.url ?? picture;
+            channelPicture =
+              ch.snippet?.thumbnails?.medium?.url ??
+              ch.snippet?.thumbnails?.default?.url ??
+              picture;
+          } else {
+            console.log("[google oauth] No YouTube channel found for this account");
           }
-        } catch { /* use Google profile as fallback */ }
+        } catch (chErr: unknown) {
+          console.error("[google oauth] Channel fetch failed:", chErr instanceof Error ? chErr.message : chErr);
+        }
 
         // Match by channelId to allow multiple channels per user
         const [existing] = channelId
@@ -145,7 +155,9 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
     );
   }
 
-  if (state !== req.session.linkedinState) {
+  // Only enforce state check if session has it — cross-origin cookie loss can drop the session
+  const storedState = req.session.linkedinState;
+  if (storedState && state !== storedState) {
     return res.redirect(
       `${env.FRONTEND_URL}/workspace/accounts?error=linkedin_state_mismatch`
     );

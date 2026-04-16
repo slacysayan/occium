@@ -33,28 +33,46 @@ router.get("/metadata", requireAuth, async (req: Request, res: Response) => {
 // GET /api/youtube/channel — get connected YouTube channel info
 router.get("/channel", requireAuth, async (req: Request, res: Response) => {
   try {
-    const [account] = await db
+    const ytAccounts = await db
       .select()
       .from(accounts)
-      .where(
-        and(
-          eq(accounts.userId, req.session.userId!),
-          eq(accounts.platform, "youtube")
-        )
-      );
+      .where(and(eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
 
-    if (!account) {
+    if (!ytAccounts.length) {
       return res.status(404).json({ error: "No YouTube account connected" });
     }
 
-    res.json({
-      id: account.id,
-      accountName: account.accountName,
-      profilePicture: account.profilePicture,
-      channelId: account.channelId,
-    });
+    res.json(ytAccounts.map(({ accessToken, refreshToken, ...rest }) => rest));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch channel" });
+  }
+});
+
+// POST /api/youtube/sync-channel — re-fetch channel info for a connected account
+router.post("/sync-channel", requireAuth, async (req: Request, res: Response) => {
+  const { accountId } = req.body as { accountId: string };
+  try {
+    const [account] = await db.select().from(accounts)
+      .where(and(eq(accounts.id, accountId as string), eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const axiosLib = (await import("axios")).default;
+    const chRes = await axiosLib.get(
+      "https://www.googleapis.com/youtube/v3/channels",
+      { params: { part: "id,snippet", mine: true }, headers: { Authorization: `Bearer ${account.accessToken}` } }
+    );
+    const ch = chRes.data.items?.[0];
+    if (!ch) return res.status(404).json({ error: "No YouTube channel found" });
+
+    await db.update(accounts).set({
+      channelId: ch.id,
+      accountName: ch.snippet?.title ?? account.accountName,
+      profilePicture: ch.snippet?.thumbnails?.medium?.url ?? ch.snippet?.thumbnails?.default?.url ?? account.profilePicture,
+    }).where(eq(accounts.id, account.id));
+
+    res.json({ ok: true, channelId: ch.id, channelName: ch.snippet?.title });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
   }
 });
 
