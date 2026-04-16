@@ -52,37 +52,48 @@ passport.use(
             .returning();
         }
 
-        // Upsert YouTube account
-        const [existing] = await db
-          .select()
-          .from(accounts)
-          .where(
-            and(
-              eq(accounts.userId, user.id),
-              eq(accounts.platform, "youtube")
-            )
+        // Fetch the YouTube channel ID so we can distinguish multiple channels
+        let channelId: string | null = null;
+        let channelName = name;
+        let channelPicture = picture;
+        try {
+          const axiosLib = (await import("axios")).default;
+          const chRes = await axiosLib.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            { params: { part: "id,snippet", mine: true }, headers: { Authorization: `Bearer ${accessToken}` } }
           );
+          const ch = chRes.data.items?.[0];
+          if (ch) {
+            channelId = ch.id;
+            channelName = ch.snippet?.title ?? name;
+            channelPicture = ch.snippet?.thumbnails?.default?.url ?? picture;
+          }
+        } catch { /* use Google profile as fallback */ }
+
+        // Match by channelId to allow multiple channels per user
+        const [existing] = channelId
+          ? await db.select().from(accounts).where(and(eq(accounts.userId, user.id), eq(accounts.platform, "youtube"), eq(accounts.channelId, channelId)))
+          : await db.select().from(accounts).where(and(eq(accounts.userId, user.id), eq(accounts.platform, "youtube")));
 
         if (existing) {
-          await db
-            .update(accounts)
-            .set({
-              accessToken,
-              refreshToken: refreshToken ?? existing.refreshToken,
-              expiresAt,
-              accountName: name,
-              profilePicture: picture,
-            })
-            .where(eq(accounts.id, existing.id));
+          await db.update(accounts).set({
+            accessToken,
+            refreshToken: refreshToken ?? existing.refreshToken,
+            expiresAt,
+            accountName: channelName,
+            profilePicture: channelPicture,
+            channelId: channelId ?? existing.channelId,
+          }).where(eq(accounts.id, existing.id));
         } else {
           await db.insert(accounts).values({
             userId: user.id,
             platform: "youtube",
-            accountName: name,
-            profilePicture: picture,
+            accountName: channelName,
+            profilePicture: channelPicture,
             accessToken,
             refreshToken: refreshToken ?? null,
             expiresAt,
+            channelId,
           });
         }
 
@@ -164,33 +175,25 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
     // If already logged in via Google, use that userId
     const userId = req.session.userId ?? user.id;
 
-    // Upsert LinkedIn account
+    // Match by URN to allow multiple LinkedIn accounts per user
     const [existing] = await db
       .select()
       .from(accounts)
-      .where(
-        and(eq(accounts.userId, userId), eq(accounts.platform, "linkedin"))
-      );
+      .where(and(eq(accounts.userId, userId), eq(accounts.platform, "linkedin"), eq(accounts.linkedinUrn, profile.urn)));
 
     if (existing) {
-      await db
-        .update(accounts)
-        .set({
-          accessToken,
-          expiresAt,
-          accountName: profile.name,
-          profilePicture: profile.picture,
-          linkedinUrn: profile.urn,
-        })
-        .where(eq(accounts.id, existing.id));
-    } else {
-      await db.insert(accounts).values({
-        userId,
-        platform: "linkedin",
+      await db.update(accounts).set({
+        accessToken, expiresAt,
         accountName: profile.name,
         profilePicture: profile.picture,
-        accessToken,
-        expiresAt,
+        linkedinUrn: profile.urn,
+      }).where(eq(accounts.id, existing.id));
+    } else {
+      await db.insert(accounts).values({
+        userId, platform: "linkedin",
+        accountName: profile.name,
+        profilePicture: profile.picture,
+        accessToken, expiresAt,
         linkedinUrn: profile.urn,
       });
     }

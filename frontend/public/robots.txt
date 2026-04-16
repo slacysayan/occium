@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://occium-contentsystem-linkedin-yt.vercel.app/sitemap.xml

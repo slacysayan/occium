@@ -232,16 +232,66 @@ const NewPost = () => {
 
                   <div className="space-y-2">
                     <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex items-center gap-2">
-                      <Upload size={12} /> Video File (optional)
+                      <Upload size={12} /> Video Source
                     </label>
-                    <label className={`flex items-center gap-3 w-full rounded-lg px-4 py-3 border cursor-pointer transition-colors ${videoFile ? "border-occium-gold/40 bg-occium-gold/5" : "border-white/10 bg-white/[0.02] hover:bg-white/5"}`}>
-                      <Upload size={16} className={videoFile ? "text-occium-gold" : "text-white/30"} />
-                      <span className={`text-sm truncate ${videoFile ? "text-white" : "text-white/30"}`}>
-                        {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)} MB)` : "Choose .mp4, .mov, .avi, .mkv"}
-                      </span>
-                      <input type="file" accept=".mp4,.mov,.avi,.mkv" className="hidden" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
-                    </label>
-                    {videoFile && <p className="text-white/30 text-xs">File selected — will upload directly to YouTube on submit.</p>}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button type="button" disabled={isSubmitting || !watch("source_url")}
+                        onClick={async () => {
+                          const url = watch("source_url");
+                          const title = watch("title");
+                          if (!url) { toast.error("Paste a YouTube URL first"); return; }
+                          if (!title) { toast.error("Add a title first"); return; }
+                          if (!selectedAccount) { toast.error("Select a destination channel first"); return; }
+                          setIsSubmitting(true);
+                          try {
+                            const res = await youtubeApi.importFromUrl({
+                              accountId: selectedAccount, sourceUrl: url, title,
+                              description: watch("description") || "",
+                              tags: watch("tags_input") ? watch("tags_input").split(",").map((t) => t.trim()) : [],
+                              privacyStatus: watch("privacy_status"),
+                              scheduledAt: scheduleDate ? scheduleDate.toISOString() : undefined,
+                            });
+                            setUploadingPostId(res.data.postId);
+                            setUploadError(null); setCompletedVideoUrl(null);
+                            toast.success("Import started — downloading then uploading...");
+                            pollRef.current = setInterval(async () => {
+                              try {
+                                const postRes = await postsApi.get(res.data.postId);
+                                const post = postRes.data;
+                                if (post.status === "published" || post.status === "scheduled") {
+                                  clearInterval(pollRef.current);
+                                  setUploadingPostId(null);
+                                  setCompletedVideoUrl(`https://www.youtube.com/watch?v=${post.platformPostId}`);
+                                  await refresh(); toast.success("Import complete!");
+                                } else if (post.status === "failed") {
+                                  clearInterval(pollRef.current);
+                                  setUploadingPostId(null);
+                                  setUploadError(post.errorMessage || "Import failed");
+                                  toast.error("Import failed");
+                                }
+                              } catch { /* keep polling */ }
+                            }, 3000);
+                          } catch (err) {
+                            toast.error(err?.response?.data?.error || "Import failed");
+                          } finally { setIsSubmitting(false); }
+                        }}
+                        className="flex flex-col items-center gap-2 p-4 rounded-lg border border-occium-gold/30 bg-occium-gold/5 hover:bg-occium-gold/10 transition-colors disabled:opacity-40 text-occium-gold">
+                        <ExternalLink size={18} />
+                        <span className="text-xs font-medium">Import from URL</span>
+                        <span className="text-[10px] text-occium-gold/60">Downloads + re-uploads</span>
+                      </button>
+
+                      <label className={`flex flex-col items-center gap-2 p-4 rounded-lg border cursor-pointer transition-colors ${videoFile ? "border-white/30 bg-white/5" : "border-white/10 bg-white/[0.02] hover:bg-white/5"} text-white/60`}>
+                        <Upload size={18} className={videoFile ? "text-white" : ""} />
+                        <span className="text-xs font-medium text-center">
+                          {videoFile ? videoFile.name.slice(0, 18) + (videoFile.name.length > 18 ? "…" : "") : "Upload Local File"}
+                        </span>
+                        <span className="text-[10px] text-white/30">
+                          {videoFile ? `${(videoFile.size / 1024 / 1024).toFixed(1)} MB` : ".mp4 .mov .avi .mkv"}
+                        </span>
+                        <input type="file" accept=".mp4,.mov,.avi,.mkv" className="hidden" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+                      </label>
+                    </div>
                   </div>
 
                   {uploadingPostId && <UploadProgressBar postId={uploadingPostId} />}

@@ -30,6 +30,7 @@ export const youtubeApi = {
   upload: (formData) => api.post("/api/youtube/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   }),
+  importFromUrl: (payload) => api.post("/api/youtube/import", payload),
 };
 
 // ─── LinkedIn ─────────────────────────────────────────────────────────────────
