@@ -27,6 +27,9 @@ export const accountsApi = {
 
 export const youtubeApi = {
   metadata: (url) => api.get("/api/youtube/metadata", { params: { url } }),
+  upload: (formData) => api.post("/api/youtube/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }),
 };
 
 // ─── LinkedIn ─────────────────────────────────────────────────────────────────
@@ -45,7 +48,12 @@ export const aiApi = {
 
 export const postsApi = {
   list: () => api.get("/api/posts"),
+  get: (id) => api.get(`/api/posts/${id}`),
   create: (data) => api.post("/api/posts", data),
   update: (id, data) => api.patch(`/api/posts/${id}`, data),
   remove: (id) => api.delete(`/api/posts/${id}`),
+};
+
+export const settingsApi = {
+  envStatus: () => api.get("/api/settings/env-status"),
 };

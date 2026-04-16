@@ -5,8 +5,6 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { aiApi } from "../lib/api";
 
-import { aiApi } from "../lib/api";
-
 const AIStudio = () => {
   const [prompt, setPrompt] = useState("");
   const [generatedText, setGeneratedText] = useState("");

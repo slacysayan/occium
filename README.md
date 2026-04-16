@@ -1,56 +1,102 @@
-# Occium: Autonomous Content Pipeline
+# Occium — Content Operations System
 
-Occium is a premium, localized content distribution system that automates the handoff between YouTube content and LinkedIn audience engagement.
+YouTube → LinkedIn content pipeline. Import a video, AI-ghostwrite a LinkedIn post, schedule and publish both.
 
-## Production Stack
+## Local Development
 
-- **Frontend**: [Vercel](https://occium-contentsystem-linkedin-yt.vercel.app)
-- **Engine**: [Render (occium-yt-dlp-host)](https://occium-yt-dlp-host.onrender.com)
-- **Legal**: [Privacy](https://occium-contentsystem-linkedin-yt.vercel.app/privacy.html) | [Terms](https://occium-contentsystem-linkedin-yt.vercel.app/terms.html)
+### Prerequisites
+- Node.js v18+
+- Neon PostgreSQL database (free at neon.tech)
+- Google Cloud project with YouTube Data API v3 enabled
+- LinkedIn Developer App
+- Gemini API key (free at aistudio.google.com)
 
-## Deployment Configuration
+### 1. Backend
 
-Set these exact environment variables in your Vercel Dashboard:
+```bash
+cd backend
+npm install
+npm run db:push   # push schema to Neon
+npm run dev       # starts on http://localhost:4000
+```
 
-- `REACT_APP_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID
-- `REACT_APP_YOUTUBE_API_KEY`: Your YouTube Data API Key
-- `REACT_APP_LOCAL_HELPER_URL`: `https://occium-yt-dlp-host.onrender.com`
-- `REACT_APP_LINKEDIN_CLIENT_ID`: Your LinkedIn OAuth Client ID
-- `REACT_APP_LINKEDIN_OAUTH_MODE`: `legacy` by default. Set to `oidc` only if your LinkedIn app is using OpenID Connect scopes.
-- `REACT_APP_ENABLE_GOOGLE_CONNECT`: `true`
+### 2. Frontend
 
-Set these exact environment variables in your Render service:
-
-- `GOOGLE_CLIENT_ID`: Same value as `REACT_APP_GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`: Google OAuth Client Secret
-- `LINKEDIN_CLIENT_ID`: Same value as `REACT_APP_LINKEDIN_CLIENT_ID`
-- `LINKEDIN_CLIENT_SECRET`: LinkedIn App Client Secret
-- `PORT`: Render-provided port
-
-## OAuth Configuration
-
-Configure these values before going live:
-
-- Google Authorized JavaScript Origin: `https://occium-contentsystem-linkedin-yt.vercel.app`
-- Google Authorized Redirect URI: `https://occium-contentsystem-linkedin-yt.vercel.app`
-- LinkedIn Authorized Redirect URL: `https://occium-contentsystem-linkedin-yt.vercel.app/connect`
-- LinkedIn auth mode:
-  - `legacy`: enable `Sign In with LinkedIn` plus `Share on LinkedIn`
-  - `oidc`: enable `Sign In with LinkedIn using OpenID Connect` plus `Share on LinkedIn`, then set `REACT_APP_LINKEDIN_OAUTH_MODE=oidc`
-
-## Production Workflow
-
-1. **Connect**: Link your YouTube destination channel and LinkedIn profile in the **Accounts** page.
-2. **Import**: Paste a YouTube link (Video, Playlist, or Channel) in the **Composer**.
-3. **Draft**: Refine metadata, tags, and LinkedIn captions using the AI ghostwriter.
-4. **Batch**: Use the **Bulk Strategy** to set a schedule interval (e.g., 60 mins between posts).
-5. **Sync**: The Render Helper Engine securely downloads, uploads, and schedules the connected workflows.
-
-## Production Notes
-
-- YouTube OAuth now uses server-side code exchange via Render so refresh tokens can be used for uploads and analytics.
-- LinkedIn OAuth, posting, and scheduling run through the Render helper.
-- LinkedIn scheduled jobs currently persist in the helper service filesystem. For strict durability across redeploys, move that queue to a database or other durable store before relying on long-dated schedules.
+```bash
+cd frontend
+npm install
+npm start         # starts on http://localhost:3000
+```
 
 ---
-&copy; 2026 Occium. Developed by Antigravity AI.
+
+## Environment Variables
+
+### Backend (`backend/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 Client Secret |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key |
+| `LINKEDIN_CLIENT_ID` | LinkedIn App Client ID |
+| `LINKEDIN_CLIENT_SECRET` | LinkedIn App Client Secret |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `SESSION_SECRET` | Random 64-char hex string |
+| `FRONTEND_URL` | e.g. `http://localhost:3000` |
+| `BACKEND_URL` | e.g. `http://localhost:4000` |
+| `PORT` | Default: 4000 |
+| `NODE_ENV` | `development` or `production` |
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Description |
+|----------|-------------|
+| `REACT_APP_API_URL` | Backend URL |
+| `REACT_APP_GOOGLE_CLIENT_ID` | Same as `GOOGLE_CLIENT_ID` |
+| `REACT_APP_LINKEDIN_CLIENT_ID` | Same as `LINKEDIN_CLIENT_ID` |
+
+---
+
+## Google Cloud Setup
+
+1. Create a project at console.cloud.google.com
+2. Enable **YouTube Data API v3**
+3. Create OAuth 2.0 credentials (Web Application)
+   - Redirect URI: `https://your-backend.railway.app/auth/google/callback`
+4. Create an API Key restricted to YouTube Data API v3
+
+## LinkedIn Setup
+
+1. Create an app at developer.linkedin.com
+2. Add: **Sign In with LinkedIn using OpenID Connect** + **Share on LinkedIn**
+3. Redirect URL: `https://your-backend.railway.app/auth/linkedin/callback`
+
+---
+
+## Deployment
+
+### Backend → Railway
+1. Push to GitHub, connect repo to Railway
+2. Set root directory to `backend/`
+3. Add all backend env vars in Railway dashboard
+
+### Frontend → Vercel
+1. Connect repo to Vercel, set root to `frontend/`
+2. Add `REACT_APP_API_URL`, `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_LINKEDIN_CLIENT_ID`
+
+After deploying, update OAuth redirect URIs in Google Cloud Console and LinkedIn to use your Railway URL.
+
+---
+
+## Stack
+
+- Frontend: React 19 + Tailwind + Framer Motion → Vercel
+- Backend: Node.js + Express + TypeScript → Railway
+- Database: Neon PostgreSQL + Drizzle ORM
+- Auth: Google OAuth 2.0 + LinkedIn OAuth 2.0
+- AI: Google Gemini Flash 2.0 (free tier)
+- Scheduling: node-cron
+
+© 2026 Occium. Developed by Antigravity AI.

@@ -154,3 +154,77 @@ export async function refreshGoogleToken(refreshToken: string): Promise<{
     expiresAt: new Date(Date.now() + res.data.expires_in * 1000),
   };
 }
+
+const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB
+
+export interface UploadWithProgressParams {
+  accessToken: string;
+  title: string;
+  description: string;
+  tags: string[];
+  privacyStatus: "public" | "unlisted" | "private";
+  publishAt?: string | null;
+  videoBuffer: Buffer;
+  mimeType: string;
+}
+
+export async function uploadWithProgress(
+  params: UploadWithProgressParams,
+  onProgress: (pct: number) => Promise<void>
+): Promise<{ videoId: string; videoUrl: string }> {
+  const { accessToken, title, description, tags, privacyStatus, publishAt, videoBuffer, mimeType } = params;
+  const totalBytes = videoBuffer.length;
+
+  const metadata = {
+    snippet: { title, description, tags },
+    status: {
+      privacyStatus: publishAt ? "private" : privacyStatus,
+      ...(publishAt ? { publishAt } : {}),
+    },
+  };
+
+  const initRes = await axios.post(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    metadata,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Upload-Content-Type": mimeType,
+        "X-Upload-Content-Length": totalBytes,
+      },
+    }
+  );
+
+  const uploadUrl = initRes.headers["location"];
+  if (!uploadUrl) throw new Error("No upload URL returned from YouTube");
+
+  let start = 0;
+  let videoId = "";
+
+  while (start < totalBytes) {
+    const end = Math.min(start + CHUNK_SIZE, totalBytes);
+    const chunk = videoBuffer.slice(start, end);
+
+    const chunkRes = await axios.put(uploadUrl, chunk, {
+      headers: {
+        "Content-Type": mimeType,
+        "Content-Range": `bytes ${start}-${end - 1}/${totalBytes}`,
+        "Content-Length": chunk.length,
+      },
+      validateStatus: (s) => s === 200 || s === 201 || s === 308,
+    });
+
+    const pct = Math.round((end / totalBytes) * 100);
+    await onProgress(pct);
+
+    if (chunkRes.status === 200 || chunkRes.status === 201) {
+      videoId = chunkRes.data.id;
+    }
+
+    start = end;
+  }
+
+  if (!videoId) throw new Error("Upload completed but no videoId returned");
+  return { videoId, videoUrl: `https://www.youtube.com/watch?v=${videoId}` };
+}

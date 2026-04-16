@@ -3,31 +3,13 @@ import { GlassCard } from "../components/ui/GlassCard";
 import { useAuth } from "../context/AuthContext";
 import { useWorkspace } from "../context/WorkspaceContext";
 import {
-  Key,
-  Save,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  Server,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  RefreshCw,
-  Trash2,
-  Download,
-  Loader2,
-  Youtube,
-  Linkedin,
-  Sparkles,
-  Globe,
-  User,
-  Plug,
-  XCircle,
-  ChevronRight,
-  Terminal,
+  Key, Save, Eye, EyeOff, ShieldCheck, Server, CheckCircle2, AlertCircle,
+  Clock, RefreshCw, Trash2, Download, Loader2, Youtube, Linkedin, Sparkles,
+  Globe, User, Plug, XCircle, ChevronRight, Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { settingsApi } from "../lib/api";
 import { appEnv } from "../config/env";
 
 /* ─────────────────────────────────────────────
@@ -109,7 +91,7 @@ const TABS = [
 ───────────────────────────────────────────── */
 const Settings = () => {
   const { user } = useAuth();
-  const { accounts } = useWorkspace();
+  const { accounts, posts } = useWorkspace();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [settings, setSettings] = useState(readSettings);
@@ -215,17 +197,14 @@ const Settings = () => {
                   user={user}
                   youtubeAccounts={youtubeAccounts}
                   linkedinAccounts={linkedinAccounts}
-                  helperStatus={helperStatus}
                   taskCounts={taskCounts}
+                  totalPosts={posts.length}
                   setActiveTab={setActiveTab}
                 />
               )}
 
               {activeTab === "api_keys" && (
-                <ApiKeysTab
-                  showKeys={showKeys}
-                  toggleKey={toggleKey}
-                />
+                <ApiKeysTab />
               )}
 
               {activeTab === "integrations" && (
@@ -259,8 +238,8 @@ const OverviewTab = ({
   user,
   youtubeAccounts,
   linkedinAccounts,
-  helperStatus,
   taskCounts,
+  totalPosts,
   setActiveTab,
 }) => (
   <div className="space-y-6">
@@ -303,7 +282,13 @@ const OverviewTab = ({
           color: "text-blue-400",
           action: "integrations",
         },
-
+        {
+          label: "Total Posts",
+          value: totalPosts,
+          icon: Download,
+          color: "text-white/60",
+          action: "tasks",
+        },
         {
           label: "Active Tasks",
           value: (taskCounts.running || 0) + (taskCounts.queued || 0),
@@ -404,13 +389,23 @@ const OverviewTab = ({
 /* ═══════════════════════════════════════════
    API Keys Tab
 ═══════════════════════════════════════════ */
-const ApiKeysTab = ({ showKeys, toggleKey }) => {
-  const envStatus = {
-    googleClientId: Boolean(appEnv.googleClientId),
-    youtubeApiKey: Boolean(appEnv.youtubeApiKey),
-    linkedinClientId: Boolean(appEnv.linkedinClientId),
-    helperUrl: Boolean(appEnv.localHelperUrl),
-  };
+const ApiKeysTab = () => {
+  const [envStatus, setEnvStatus] = useState({});
+
+  useEffect(() => {
+    settingsApi.envStatus().then((res) => setEnvStatus(res.data)).catch(() => {});
+  }, []);
+
+  const backendVars = [
+    { key: "GOOGLE_CLIENT_ID", label: "Google OAuth Client ID" },
+    { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth Client Secret" },
+    { key: "LINKEDIN_CLIENT_ID", label: "LinkedIn Client ID" },
+    { key: "LINKEDIN_CLIENT_SECRET", label: "LinkedIn Client Secret" },
+    { key: "YOUTUBE_API_KEY", label: "YouTube API Key" },
+    { key: "GEMINI_API_KEY", label: "Gemini API Key" },
+    { key: "DATABASE_URL", label: "Database URL" },
+    { key: "SESSION_SECRET", label: "Session Secret" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -420,40 +415,23 @@ const ApiKeysTab = ({ showKeys, toggleKey }) => {
           <div>
             <p className="text-amber-100 text-sm font-medium">Environment-Driven Configuration</p>
             <p className="text-white/50 text-xs mt-1 leading-relaxed">
-              API keys and OAuth credentials are set as environment variables during deployment.
-              Frontend keys are set in Vercel (build-time), and backend secrets (client secrets) are set in Render (runtime).
-              Keys shown below reflect what was baked into this build.
+              Secrets are set as environment variables on Railway (backend) and Vercel (frontend). Only presence is shown — values are never exposed.
             </p>
           </div>
         </div>
-
-        <SectionHeader
-          icon={ShieldCheck}
-          title="Environment Variables"
-          subtitle="These values are set at build time and control OAuth integrations."
-        />
-
-        <div className="space-y-5">
-          <ApiKeyInput
-            label="Google OAuth Client ID"
-            name="googleClientId"
-            value={appEnv.googleClientId || ""}
-            show={showKeys.googleClientId}
-            onToggle={() => toggleKey("googleClientId")}
-            readOnly
-            hint="REACT_APP_GOOGLE_CLIENT_ID — Used for the YouTube connect popup."
-            configured={envStatus.googleClientId}
-          />
-          <ApiKeyInput
-            label="LinkedIn Client ID"
-            name="linkedinClientId"
-            value={appEnv.linkedinClientId || ""}
-            show={showKeys.linkedinClientId}
-            onToggle={() => toggleKey("linkedinClientId")}
-            readOnly
-            hint="REACT_APP_LINKEDIN_CLIENT_ID — Used to initiate LinkedIn OAuth flow from the frontend."
-            configured={envStatus.linkedinClientId}
-          />
+        <SectionHeader icon={ShieldCheck} title="Backend Environment Variables" subtitle="Set in Railway dashboard" />
+        <div className="space-y-3">
+          {backendVars.map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+              <div>
+                <p className="text-white text-sm font-medium">{label}</p>
+                <p className="text-white/30 text-xs font-mono">{key}</p>
+              </div>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border ${envStatus[key] ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-400"}`}>
+                {envStatus[key] ? "Configured" : "Missing"}
+              </span>
+            </div>
+          ))}
         </div>
       </GlassCard>
     </div>
@@ -601,10 +579,9 @@ const IntegrationCard = ({ integration }) => {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{acc.account_name}</p>
+                    <p className="text-white text-sm font-medium truncate">{acc.accountName}</p>
                     <p className="text-white/30 text-xs">
-                      {acc.connection_mode === "google" ? "Google OAuth" : acc.connection_mode}
-                      {acc.channel_id ? ` · ${acc.channel_id}` : ""}
+                      {acc.platform === "youtube" ? `Channel: ${acc.channelId || "—"}` : `URN: ${acc.linkedinUrn || "—"}`}
                     </p>
                   </div>
                   <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />

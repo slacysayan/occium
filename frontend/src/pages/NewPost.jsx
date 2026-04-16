@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Linkedin, Wand2, X, Youtube, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Linkedin, Wand2, X, Youtube, Loader2, Upload, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "../components/ui/GlassCard";
@@ -29,6 +29,11 @@ const NewPost = () => {
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isGhostwriting, setIsGhostwriting] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState("Professional");
+  const [videoFile, setVideoFile] = useState(null);
+  const [uploadingPostId, setUploadingPostId] = useState(null);
+  const [completedVideoUrl, setCompletedVideoUrl] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const pollRef = useRef(null);
 
   const { register, handleSubmit, setValue, watch, reset } = useForm({ defaultValues });
 
@@ -108,14 +113,46 @@ const NewPost = () => {
           scheduledAt: scheduleDate ? scheduleDate.toISOString() : undefined,
         });
         toast.success(scheduleDate ? "LinkedIn post scheduled!" : "Posted to LinkedIn!");
+        await refresh();
+        resetComposer();
+      } else if (videoFile) {
+        const formData = new FormData();
+        formData.append("video", videoFile);
+        formData.append("accountId", selectedAccount);
+        formData.append("title", data.title);
+        formData.append("description", data.description || "");
+        formData.append("tags", JSON.stringify(data.tags_input ? data.tags_input.split(",").map((t) => t.trim()) : []));
+        formData.append("privacyStatus", data.privacy_status);
+        if (scheduleDate) formData.append("scheduledAt", scheduleDate.toISOString());
+
+        const res = await youtubeApi.upload(formData);
+        setUploadingPostId(res.data.postId);
+        setUploadError(null);
+        setCompletedVideoUrl(null);
+        toast.success("Upload started — tracking progress...");
+
+        pollRef.current = setInterval(async () => {
+          try {
+            const postRes = await postsApi.get(res.data.postId);
+            const post = postRes.data;
+            if (post.status === "published" || post.status === "scheduled") {
+              clearInterval(pollRef.current);
+              setUploadingPostId(null);
+              setCompletedVideoUrl(`https://www.youtube.com/watch?v=${post.platformPostId}`);
+              await refresh();
+              toast.success("Upload complete!");
+            } else if (post.status === "failed") {
+              clearInterval(pollRef.current);
+              setUploadingPostId(null);
+              setUploadError(post.errorMessage || "Upload failed");
+              toast.error("Upload failed");
+            }
+          } catch { /* keep polling */ }
+        }, 3000);
       } else {
-        // YouTube — save as draft/scheduled post for now
         await postsApi.create({
-          accountId: selectedAccount,
-          platform: "youtube",
-          sourceUrl: data.source_url,
-          title: data.title,
-          description: data.description,
+          accountId: selectedAccount, platform: "youtube",
+          sourceUrl: data.source_url, title: data.title, description: data.description,
           thumbnailUrl: data.thumbnail_url,
           tags: data.tags_input ? data.tags_input.split(",").map((t) => t.trim()) : [],
           privacyStatus: data.privacy_status,
@@ -123,9 +160,9 @@ const NewPost = () => {
           status: scheduleDate ? "scheduled" : "draft",
         });
         toast.success(scheduleDate ? "YouTube post scheduled!" : "Saved as draft!");
+        await refresh();
+        resetComposer();
       }
-      await refresh();
-      resetComposer();
     } catch (err) {
       toast.error(err?.response?.data?.error || "Failed to submit");
     } finally {
@@ -133,7 +170,11 @@ const NewPost = () => {
     }
   };
 
-  const resetComposer = () => { reset(defaultValues); setScheduleDate(null); };
+  const resetComposer = () => {
+    reset(defaultValues); setScheduleDate(null); setVideoFile(null);
+    setUploadingPostId(null); setCompletedVideoUrl(null); setUploadError(null);
+    if (pollRef.current) clearInterval(pollRef.current);
+  };
   const activeAccounts = activeTab === "youtube" ? youtubeAccounts : linkedinAccounts;
 
   return (
@@ -188,6 +229,32 @@ const NewPost = () => {
                     <input {...register("source_url")} className="w-full glass-input rounded-lg px-4 py-3" placeholder="https://www.youtube.com/watch?v=..." />
                     <p className="text-white/30 text-xs">Metadata auto-fills when you paste a valid URL.</p>
                   </div>
+
+                  <div className="space-y-2">
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wide flex items-center gap-2">
+                      <Upload size={12} /> Video File (optional)
+                    </label>
+                    <label className={`flex items-center gap-3 w-full rounded-lg px-4 py-3 border cursor-pointer transition-colors ${videoFile ? "border-occium-gold/40 bg-occium-gold/5" : "border-white/10 bg-white/[0.02] hover:bg-white/5"}`}>
+                      <Upload size={16} className={videoFile ? "text-occium-gold" : "text-white/30"} />
+                      <span className={`text-sm truncate ${videoFile ? "text-white" : "text-white/30"}`}>
+                        {videoFile ? `${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)} MB)` : "Choose .mp4, .mov, .avi, .mkv"}
+                      </span>
+                      <input type="file" accept=".mp4,.mov,.avi,.mkv" className="hidden" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+                    </label>
+                    {videoFile && <p className="text-white/30 text-xs">File selected — will upload directly to YouTube on submit.</p>}
+                  </div>
+
+                  {uploadingPostId && <UploadProgressBar postId={uploadingPostId} />}
+                  {completedVideoUrl && (
+                    <a href={completedVideoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-emerald-400 text-sm hover:underline">
+                      <CheckCircle2 size={14} /> View on YouTube <ExternalLink size={12} />
+                    </a>
+                  )}
+                  {uploadError && (
+                    <div className="flex items-center gap-2 text-red-400 text-sm">
+                      <AlertCircle size={14} /> {uploadError}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -365,5 +432,31 @@ function getYouTubeVideoId(url) {
     return s?.[1] ?? null;
   } catch { return null; }
 }
+
+const UploadProgressBar = ({ postId }) => {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await postsApi.get(postId);
+        setProgress(res.data.uploadProgress ?? 0);
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [postId]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-white/50">
+        <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Uploading to YouTube...</span>
+        <span>{progress}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+        <motion.div className="h-full bg-occium-gold rounded-full"
+          initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
+      </div>
+    </div>
+  );
+};
 
 export default NewPost;

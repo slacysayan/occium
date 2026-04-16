@@ -12,6 +12,7 @@ import linkedinRouter from "./routes/linkedin";
 import aiRouter from "./routes/ai";
 import postsRouter from "./routes/posts";
 import accountsRouter from "./routes/accounts";
+import settingsRouter from "./routes/settings";
 import { errorHandler } from "./middleware/error.middleware";
 
 const app = express();
@@ -70,6 +71,7 @@ app.use("/api/linkedin", linkedinRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/posts", postsRouter);
 app.use("/api/accounts", accountsRouter);
+app.use("/api/settings", settingsRouter);
 
 app.use(errorHandler);
 

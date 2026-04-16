@@ -6,6 +6,21 @@ import { eq, and, desc } from "drizzle-orm";
 
 const router = Router();
 
+// GET /api/posts/:id
+router.get("/:id", requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const [post] = await db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)));
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    res.json(post);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch post" });
+  }
+});
+
 // GET /api/posts
 router.get("/", requireAuth, async (req: Request, res: Response) => {
   try {

@@ -25,6 +25,14 @@ import { workspaceRoutes } from "../lib/routes";
 const Dashboard = () => {
   const { accounts, posts } = useWorkspace();
 
+  const upcomingPosts = useMemo(() => {
+    const now = new Date();
+    return posts
+      .filter((p) => p.status === "scheduled" && p.scheduledAt && new Date(p.scheduledAt) > now)
+      .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+      .slice(0, 5);
+  }, [posts]);
+
   const stats = {
     connectedAccounts: accounts.length,
     drafts: posts.filter((p) => p.status === "draft").length,
@@ -189,14 +197,25 @@ const Dashboard = () => {
                   <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Queue Preview</p>
                   <h2 className="text-xl font-light text-white tracking-tight">In Motion</h2>
                 </div>
-                <Link to={workspaceRoutes.queue} className="text-[10px] font-bold text-occium-gold hover:text-white uppercase tracking-widest transition-colors">
-                  View All
-                </Link>
+                <Link to={workspaceRoutes.queue} className="text-[10px] font-bold text-occium-gold hover:text-white uppercase tracking-widest transition-colors">View All</Link>
               </div>
-
-<div className="rounded-2xl border border-dashed border-white/5 p-8 text-center bg-white/[0.01]">
-                  <p className="text-white/20 text-xs tracking-widest uppercase">UI Shell - No Pipeline Data</p>
+              {upcomingPosts.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/5 p-8 text-center bg-white/[0.01]">
+                  <p className="text-white/20 text-xs tracking-widest uppercase">Nothing scheduled yet</p>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingPosts.map((post) => (
+                    <div key={post.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                      <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${post.platform === "youtube" ? "bg-red-500/10 text-red-400" : "bg-blue-500/10 text-blue-400"}`}>
+                        {post.platform}
+                      </span>
+                      <p className="text-white text-xs font-medium truncate flex-1">{post.title || post.description || "Untitled"}</p>
+                      <span className="text-white/30 text-[10px] font-mono shrink-0">{format(new Date(post.scheduledAt), "MMM d")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </GlassCard>
 
             <LinkedInSpotlightSection />
@@ -326,27 +345,57 @@ const ScheduleCard = () => {
 };
 
 const YouTubePulseSection = () => {
+  const { youtubeAccounts, posts } = useWorkspace();
+  const account = youtubeAccounts[0];
+  const ytPosts = posts.filter((p) => p.platform === "youtube");
+  const publishedCount = ytPosts.filter((p) => p.status === "published").length;
+  const scheduledCount = ytPosts.filter((p) => p.status === "scheduled").length;
+
+  if (!account) {
+    return (
+      <GlassCard className="h-full">
+        <div className="mb-8">
+          <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Network Pulse</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">YouTube</h2>
+        </div>
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-white/10 mb-6">
+            <PlayCircle size={32} />
+          </div>
+          <h3 className="text-white font-light text-lg mb-2">No Channel Connected</h3>
+          <Link to={workspaceRoutes.accounts} className="text-occium-gold text-sm hover:underline mt-2">Connect YouTube →</Link>
+        </div>
+      </GlassCard>
+    );
+  }
+
   return (
     <GlassCard className="h-full">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-bold mb-1">Network Pulse</p>
-          <h2 className="text-2xl font-light text-white tracking-tight">YouTube Analytics</h2>
+          <h2 className="text-2xl font-light text-white tracking-tight">YouTube</h2>
         </div>
         <div className="px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-2 bg-occium-gold/10 text-occium-gold border border-occium-gold/20">
-          <div className="w-1 h-1 rounded-full bg-occium-gold" />
-          Active Connection
+          <div className="w-1 h-1 rounded-full bg-occium-gold" /> Connected
         </div>
       </div>
-
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center text-white/10 mb-6">
-          <PlayCircle size={32} />
+      <div className="flex items-center gap-4 mb-6">
+        {account.profilePicture ? (
+          <img src={account.profilePicture} alt="" className="w-14 h-14 rounded-2xl object-cover border border-white/10" />
+        ) : (
+          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center">
+            <PlayCircle size={24} className="text-white/30" />
+          </div>
+        )}
+        <div>
+          <p className="text-white font-medium">{account.accountName}</p>
+          {account.channelId && <p className="text-white/30 text-xs mt-1">{account.channelId}</p>}
         </div>
-        <h3 className="text-white font-light text-lg mb-2">Analytics Unavailable</h3>
-        <p className="text-white/30 text-xs leading-relaxed max-w-[240px]">
-          YouTube metadata and video processing are active via Local Engine. Bridge connection is stable.
-        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <AnalyticsStat label="Published" value={publishedCount} />
+        <AnalyticsStat label="Scheduled" value={scheduledCount} />
       </div>
     </GlassCard>
   );
@@ -355,12 +404,22 @@ const YouTubePulseSection = () => {
 const LinkedInSpotlightSection = () => {
   const { linkedinAccounts, posts } = useWorkspace();
   const account = linkedinAccounts[0];
-
-  if (!account) return null;
-
   const linkedinPosts = posts.filter((p) => p.platform === "linkedin");
   const publishedCount = linkedinPosts.filter((p) => p.status === "published").length;
   const scheduledCount = linkedinPosts.filter((p) => p.status === "scheduled").length;
+
+  if (!account) {
+    return (
+      <GlassCard delay={0.19}>
+        <div className="mb-6">
+          <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">Not Connected</h2>
+        </div>
+        <p className="text-white/30 text-sm mb-4">Connect your LinkedIn account to start posting.</p>
+        <Link to={workspaceRoutes.accounts} className="text-occium-gold text-sm hover:underline">Connect LinkedIn →</Link>
+      </GlassCard>
+    );
+  }
 
   return (
     <GlassCard delay={0.19}>
@@ -369,42 +428,24 @@ const LinkedInSpotlightSection = () => {
           <p className="text-white/30 text-xs uppercase tracking-[0.2em] mb-2">LinkedIn</p>
           <h2 className="text-2xl font-light text-white tracking-tight">Connection Status</h2>
         </div>
-        <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full border text-occium-gold border-occium-gold/20 bg-occium-gold/10">
-          Social Node Active
-        </span>
+        <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full border text-occium-gold border-occium-gold/20 bg-occium-gold/10">Active</span>
       </div>
-
       <div className="flex items-center gap-4 mb-6">
-        {account.profile_picture ? (
-          <img
-            src={account.profile_picture}
-            alt=""
-            className="w-14 h-14 rounded-2xl object-cover border border-white/10"
-          />
+        {account.profilePicture ? (
+          <img src={account.profilePicture} alt="" className="w-14 h-14 rounded-2xl object-cover border border-white/10" />
         ) : (
           <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center p-3">
-             <img src="/branding/occium-mark.webp" alt="" className="w-full h-full object-contain" />
+            <img src="/branding/occium-mark.webp" alt="" className="w-full h-full object-contain" />
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-white font-medium line-clamp-1">{account.account_name}</p>
-          <p className="text-white/35 text-sm mt-1">
-            Connected via Occium Local Bridge. All programmatic posts are live.
-          </p>
+          <p className="text-white font-medium line-clamp-1">{account.accountName}</p>
+          <p className="text-white/35 text-sm mt-1">Connected via Occium</p>
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <AnalyticsStat label="Published" value={publishedCount} />
         <AnalyticsStat label="Scheduled" value={scheduledCount} />
-      </div>
-
-      <div className="mt-6 pt-6 border-t border-white/5 space-y-3">
-        <p className="text-white/35 text-xs uppercase tracking-[0.18em]">Notes</p>
-        <div className="rounded-2xl bg-white/5 border border-white/5 p-4 text-xs text-white/40 leading-relaxed space-y-2">
-          <p>LinkedIn does not provide a public analytics API for personal profiles. Follower counts, impressions, and engagement data are not available here.</p>
-          <p>Counts above reflect posts tracked in this browser session only.</p>
-        </div>
       </div>
     </GlassCard>
   );
