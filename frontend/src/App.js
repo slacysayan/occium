@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthWrapper, useAuth } from "./context/AuthContext";
 import { WorkspaceProvider } from "./context/WorkspaceContext";
 import AppBackdrop from "./components/layout/AppBackdrop";
@@ -81,6 +82,7 @@ const App = () => (
         </Router>
         <Toaster position="bottom-right" theme="dark" />
         <Analytics />
+        <SpeedInsights />
       </>
     </WorkspaceProvider>
   </AuthWrapper>
