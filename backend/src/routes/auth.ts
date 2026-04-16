@@ -125,7 +125,13 @@ router.get(
   passport.authenticate("google", {
     accessType: "offline",
     prompt: "consent",
-  })
+    scope: [
+      "profile",
+      "email",
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+    ],
+  } as Parameters<typeof passport.authenticate>[1])
 );
 
 router.get(
