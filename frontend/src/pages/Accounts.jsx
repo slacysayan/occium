@@ -29,12 +29,11 @@ const Accounts = () => {
   };
 
   return (
-
     <div className="space-y-10 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Connections</h1>
-          <p className="text-white/40 font-light">Manage your social accounts connected via the Occium Local Node.</p>
+          <p className="text-white/40 font-light">Manage your social accounts connected via Occium.</p>
         </div>
         {isLoading && <Loader2 className="animate-spin text-occium-gold" />}
       </div>
@@ -44,7 +43,6 @@ const Accounts = () => {
           <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
             <Youtube size={120} />
           </div>
-
           <div className="relative z-10">
             <div className="flex items-center gap-4 mb-6">
               <div className="p-4 bg-red-600 rounded-2xl text-white shadow-lg shadow-red-900/20">
@@ -52,56 +50,43 @@ const Accounts = () => {
               </div>
               <div>
                 <h3 className="text-2xl font-medium text-white">YouTube</h3>
-                <p className="text-white/40">Active YouTube Node</p>
+                <p className="text-white/40">{youtubeAccounts.length > 0 ? `${youtubeAccounts.length} channel${youtubeAccounts.length > 1 ? "s" : ""} connected` : "No channels connected"}</p>
               </div>
             </div>
-
             <div className="space-y-4 min-h-[120px]">
               {youtubeAccounts.map((account) => (
-                <div
-                  key={account._id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm hover:bg-white/10 transition-colors group/item"
-                >
+                <div key={account.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm hover:bg-white/10 transition-colors group/item">
                   <div className="flex items-center gap-4">
-                    {account.profile_picture ? (
-                      <img src={account.profile_picture} alt="" className="w-10 h-10 rounded-full border border-white/10" />
+                    {account.profilePicture ? (
+                      <img src={account.profilePicture} alt="" className="w-10 h-10 rounded-full border border-white/10" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center">
                         <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain opacity-90" />
                       </div>
                     )}
                     <div>
-                      <div className="text-white font-medium">{account.account_name}</div>
+                      <div className="text-white font-medium">{account.accountName}</div>
                       <div className="text-white/30 text-xs flex items-center gap-1">
-                        <Check size={10} className="text-occium-gold" /> Managed by Local Node
+                        <Check size={10} className="text-occium-gold" />
+                        {account.channelId ? `Channel: ${account.channelId}` : "Connected"}
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => disconnectAccount(account._id)}
-                    className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100"
-                  >
+                  <button onClick={() => disconnectAccount(account.id)} className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100">
                     <Trash2 size={18} />
                   </button>
                 </div>
               ))}
-
               {youtubeAccounts.length === 0 && (
                 <div className="p-4 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center py-10 bg-white/[0.01]">
-                  <p className="text-white/30 text-xs uppercase tracking-widest mb-6 leading-relaxed">No YouTube placeholders yet</p>
-                  <button
-                    onClick={connectYouTube}
-                    className="flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-xl shadow-white/5"
-                  >
+                  <p className="text-white/30 text-xs uppercase tracking-widest mb-6 leading-relaxed">No YouTube channels yet</p>
+                  <button onClick={connectYouTube} className="flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-xl shadow-white/5">
                     <Plus size={18} /> Link Channel
                   </button>
                 </div>
               )}
               {youtubeAccounts.length > 0 && (
-                <button
-                  onClick={connectYouTube}
-                  className="w-full flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-sm border-t border-white/5 pt-4 mt-2"
-                >
+                <button onClick={connectYouTube} className="w-full flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-sm border-t border-white/5 pt-4 mt-2">
                   <Plus size={14} /> Add Another Channel
                 </button>
               )}
@@ -113,7 +98,6 @@ const Accounts = () => {
           <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
             <Linkedin size={120} />
           </div>
-
           <div className="relative z-10">
             <div className="flex items-center gap-4 mb-6">
               <div className="p-4 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-900/20">
@@ -121,50 +105,44 @@ const Accounts = () => {
               </div>
               <div>
                 <h3 className="text-2xl font-medium text-white">LinkedIn</h3>
-                <p className="text-white/40">Active LinkedIn Node</p>
+                <p className="text-white/40">{linkedinAccounts.length > 0 ? `${linkedinAccounts.length} account${linkedinAccounts.length > 1 ? "s" : ""} connected` : "No accounts connected"}</p>
               </div>
             </div>
-
             <div className="space-y-4 min-h-[120px]">
               {linkedinAccounts.map((account) => (
-                <div
-                  key={account._id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm hover:bg-white/10 transition-colors group/item"
-                >
+                <div key={account.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm hover:bg-white/10 transition-colors group/item">
                   <div className="flex items-center gap-4">
-                    {account.profile_picture ? (
-                      <img src={account.profile_picture} alt="" className="w-10 h-10 rounded-full border border-white/10" />
+                    {account.profilePicture ? (
+                      <img src={account.profilePicture} alt="" className="w-10 h-10 rounded-full border border-white/10" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center">
                         <img src={OCCIUM_MARK_SRC} alt="" className="w-6 h-6 object-contain opacity-90" />
                       </div>
                     )}
                     <div>
-                      <div className="text-white font-medium">{account.account_name}</div>
+                      <div className="text-white font-medium">{account.accountName}</div>
                       <div className="text-white/30 text-xs flex items-center gap-1">
-                        <Check size={10} className="text-occium-gold" /> Managed by Local Node
+                        <Check size={10} className="text-occium-gold" /> Connected
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => disconnectAccount(account._id)}
-                    className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100"
-                  >
+                  <button onClick={() => disconnectAccount(account.id)} className="p-2 text-white/20 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors opacity-0 group-hover/item:opacity-100">
                     <Trash2 size={18} />
                   </button>
                 </div>
               ))}
-
               {linkedinAccounts.length === 0 && (
                 <div className="p-4 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center py-8">
-                  <p className="text-white/30 text-sm mb-6">No LinkedIn placeholders yet</p>
-                  <button
-                    onClick={connectLinkedIn}
-                    className="flex items-center justify-center gap-3 bg-occium-gold text-black px-6 py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-all shadow-xl shadow-occium-gold/10"
-                  >
+                  <p className="text-white/30 text-sm mb-6">No LinkedIn accounts yet</p>
+                  <button onClick={connectLinkedIn} className="flex items-center justify-center gap-3 bg-occium-gold text-black px-6 py-3 rounded-xl font-bold text-sm hover:scale-[1.02] transition-all shadow-xl shadow-occium-gold/10">
                     <Plus size={18} /> Link Account
                   </button>
                 </div>
+              )}
+              {linkedinAccounts.length > 0 && (
+                <button onClick={connectLinkedIn} className="w-full flex items-center justify-center gap-2 text-white/40 hover:text-white py-2 transition-colors text-sm border-t border-white/5 pt-4 mt-2">
+                  <Plus size={14} /> Add Another Account
+                </button>
               )}
             </div>
           </div>

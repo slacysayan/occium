@@ -140,7 +140,10 @@ router.get(
   (req: Request, res: Response) => {
     const user = req.user as { userId: string };
     req.session.userId = user.userId;
-    res.redirect(`${env.FRONTEND_URL}/workspace/accounts?connected=youtube`);
+    req.session.save((err) => {
+      if (err) console.error("[google callback] Session save error:", err);
+      res.redirect(`${env.FRONTEND_URL}/workspace/accounts?connected=youtube`);
+    });
   }
 );
 
@@ -149,7 +152,11 @@ router.get(
 router.get("/linkedin", (req: Request, res: Response) => {
   const state = crypto.randomBytes(16).toString("hex");
   req.session.linkedinState = state;
-  res.redirect(getLinkedInAuthUrl(state));
+  // Force save session before redirecting so state persists through LinkedIn redirect
+  req.session.save((err) => {
+    if (err) console.error("[linkedin] Session save error:", err);
+    res.redirect(getLinkedInAuthUrl(state));
+  });
 });
 
 router.get("/linkedin/callback", async (req: Request, res: Response) => {
@@ -217,7 +224,10 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
     }
 
     req.session.userId = userId;
-    res.redirect(`${env.FRONTEND_URL}/workspace/accounts?connected=linkedin`);
+    req.session.save((err) => {
+      if (err) console.error("[linkedin callback] Session save error:", err);
+      res.redirect(`${env.FRONTEND_URL}/workspace/accounts?connected=linkedin`);
+    });
   } catch (err) {
     console.error("[linkedin callback]", err);
     res.redirect(`${env.FRONTEND_URL}/workspace/accounts?error=linkedin_failed`);

@@ -49,8 +49,7 @@ export const WorkspaceProvider = ({ children }) => {
   const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
 
   const removePost = async (id) => {
-    const { postsApi: api } = await import("../lib/api");
-    await api.remove(id);
+    await postsApi.remove(id);
     setPosts((prev) => prev.filter((p) => p.id !== id));
   };
 
