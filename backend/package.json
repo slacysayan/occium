@@ -18,13 +18,9 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": [
-      "**/*.test.ts"
-    ],
-    "globals": {
-      "ts-jest": {
-        "diagnostics": false
-      }
+    "testMatch": ["**/*.test.ts"],
+    "transform": {
+      "^.+\\.tsx?$": ["ts-jest", { "diagnostics": false }]
     }
   },
   "dependencies": {
