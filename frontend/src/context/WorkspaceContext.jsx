@@ -37,10 +37,12 @@ export const WorkspaceProvider = ({ children }) => {
     const connected = params.get("connected");
     const error = params.get("error");
     if (connected) {
-      refresh();
+      // Small delay to ensure session cookie is set before fetching
+      setTimeout(() => { refresh(); }, 500);
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (error) {
+      console.error("[workspace] OAuth error:", error);
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [refresh]);
