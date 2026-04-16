@@ -1,238 +1,46 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
-import axios from "axios";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { toast } from "sonner";
-import { appEnv } from "../config/env";
-import {
-  connectYouTubeAccountFromGoogle,
-  exchangeGoogleCode,
-  ensureLocalSession,
-  resetLocalUser,
-  connectMockYouTubeAccount,
-  connectLinkedInAccount,
-} from "../lib/localApp";
+import { authApi } from "../lib/api";
 
 const AuthContext = createContext();
-
 export const useAuth = () => useContext(AuthContext);
 
-function createOAuthState() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `linkedin_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-const AuthStateProvider = ({ children, connectYouTubeImpl, connectLinkedInImpl }) => {
+export const AuthWrapper = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const session = ensureLocalSession();
-    setUser(session.user);
-    setLoading(false);
+    authApi.me()
+      .then((res) => setUser(res.data.user))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
   }, []);
 
-  const refreshSession = () => {
-    const session = ensureLocalSession();
-    setUser(session.user);
-    return session;
+  const connectYouTubeAccount = () => authApi.connectGoogle();
+  const connectLinkedInAccount = () => authApi.connectLinkedIn();
+
+  const logout = async () => {
+    await authApi.logout();
+    setUser(null);
+    toast.success("Logged out.");
   };
 
-  const connectYouTubeAccount = async () => {
-    const result = await connectYouTubeImpl();
-    refreshSession();
-    return result;
-  };
-
-  const connectLinkedInAccount = async () => {
-    if (connectLinkedInImpl) {
-      const result = await connectLinkedInImpl();
-      refreshSession();
-      return result;
-    }
-
-    if (!appEnv.linkedinClientId) {
-      throw new Error(
-        "LinkedIn OAuth is not configured on this deployment. Add REACT_APP_LINKEDIN_CLIENT_ID in Vercel and redeploy.",
-      );
-    }
-
-    const redirectUri = `${window.location.origin}/connect`;
-    const scope =
-      appEnv.linkedinOauthMode === "oidc"
-        ? "openid profile email w_member_social"
-        : "r_liteprofile r_emailaddress w_member_social";
-    const state = createOAuthState();
-
-    window.sessionStorage.setItem("occium.linkedin.oauth.state", state);
-
-    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${appEnv.linkedinClientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
-    window.location.href = authUrl;
-  };
-
-  const loginAsDemo = () => {
-    const session = refreshSession();
-    toast.success("Local workspace ready.");
-    return session.user;
-  };
-
-  const logout = () => {
-    const nextUser = resetLocalUser();
-    setUser(nextUser);
-    toast.info("Local workspace reset.");
+  const refreshSession = async () => {
+    const res = await authApi.me();
+    setUser(res.data.user);
+    return res.data;
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token: "local-session",
-        loading,
-        loginAsDemo,
-        logout,
-        connectYouTubeAccount,
-        connectLinkedInAccount,
-        refreshSession,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      logout,
+      connectYouTubeAccount,
+      connectLinkedInAccount,
+      refreshSession,
+    }}>
       {children}
     </AuthContext.Provider>
-  );
-};
-
-const LocalAuthProvider = ({ children }) => {
-  const connectYouTubeImpl = async () => {
-    return connectMockYouTubeAccount();
-  };
-
-  const connectLinkedInImpl = async () => {
-    return connectLinkedInAccount();
-  };
-
-  return (
-    <AuthStateProvider 
-      connectYouTubeImpl={connectYouTubeImpl}
-      connectLinkedInImpl={connectLinkedInImpl}
-    >
-      {children}
-    </AuthStateProvider>
-  );
-};
-
-const GoogleAuthProvider = ({ children }) => {
-  const pendingRequestRef = useRef({
-    resolve: null,
-    reject: null,
-  });
-
-  const clearPendingRequest = () => {
-    pendingRequestRef.current = {
-      resolve: null,
-      reject: null,
-    };
-  };
-
-  const googleLogin = useGoogleLogin({
-    flow: "auth-code",
-    ux_mode: "popup",
-    select_account: true,
-    scope:
-      "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
-    onSuccess: async (codeResponse) => {
-      try {
-        const redirectUri = window.location.origin;
-        console.log("DEBUG: Exchanging Google code with redirect_uri:", redirectUri);
-        
-        const tokenResponse = await exchangeGoogleCode(codeResponse.code, redirectUri);
-        const headers = {
-          Authorization: `Bearer ${tokenResponse.access_token}`,
-        };
-
-        const [profileResult, channelResult] = await Promise.allSettled([
-          axios.get("https://www.googleapis.com/oauth2/v3/userinfo", {
-            headers,
-          }),
-          axios.get("https://www.googleapis.com/youtube/v3/channels", {
-            headers,
-            params: {
-              part: "snippet",
-              mine: true,
-            },
-          }),
-        ]);
-
-        const googleProfile =
-          profileResult.status === "fulfilled" ? profileResult.value.data : null;
-        const channelProfile =
-          channelResult.status === "fulfilled"
-            ? channelResult.value.data?.items?.[0] || null
-            : null;
-
-        if (!googleProfile && !channelProfile) {
-          throw new Error("Could not retrieve profile information from Google.");
-        }
-
-        const result = connectYouTubeAccountFromGoogle({
-          googleProfile,
-          channelProfile,
-          accessToken: tokenResponse.access_token,
-          refreshToken: tokenResponse.refresh_token,
-          expiresIn: tokenResponse.expires_in,
-          scope: tokenResponse.scope,
-        });
-
-        pendingRequestRef.current.resolve?.(result);
-        toast.success("YouTube channel connected successfully.");
-      } catch (error) {
-        console.error("DEBUG: Google Sync Error", error);
-        const errorDetail = error.response?.data?.error_description || error.response?.data?.detail || error.message;
-        console.error("DEBUG: Error Detail:", errorDetail);
-        
-        pendingRequestRef.current.reject?.(error);
-        toast.error(`Sync failed: ${errorDetail.includes("redirect_uri_mismatch") ? "Redirect URI mismatch in Google Console" : "Check console for details"}`);
-      } finally {
-        clearPendingRequest();
-      }
-    },
-    onError: (error) => {
-      console.error("Google auth error", error);
-      pendingRequestRef.current.reject?.(error);
-      clearPendingRequest();
-      toast.error("Google authentication failed.");
-    },
-  });
-
-  const connectYouTubeImpl = () =>
-    new Promise((resolve, reject) => {
-      pendingRequestRef.current = { resolve, reject };
-      googleLogin();
-    });
-
-  return (
-    <AuthStateProvider connectYouTubeImpl={connectYouTubeImpl}>
-      {children}
-    </AuthStateProvider>
-  );
-};
-
-export const AuthWrapper = ({ children }) => {
-  const hasGoogleConfig = appEnv.enableGoogleConnect && Boolean(appEnv.googleClientId);
-
-  if (!hasGoogleConfig) {
-    return <LocalAuthProvider>{children}</LocalAuthProvider>;
-  }
-
-  return (
-    <GoogleOAuthProvider clientId={appEnv.googleClientId}>
-      <GoogleAuthProvider>{children}</GoogleAuthProvider>
-    </GoogleOAuthProvider>
   );
 };

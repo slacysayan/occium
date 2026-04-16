@@ -23,54 +23,42 @@ import { useWorkspace } from "../context/WorkspaceContext";
 import { workspaceRoutes } from "../lib/routes";
 
 const Dashboard = () => {
-  const { user } = useAuth();
   const { accounts, posts } = useWorkspace();
 
-  const stats = useMemo(() => {
-    const drafts = posts.filter((post) => post.status === "draft").length;
-    const scheduled = posts.filter((post) => post.status === "scheduled").length;
-    const published = posts.filter((post) => post.status === "published").length;
+  const stats = {
+    connectedAccounts: accounts.length,
+    drafts: posts.filter((p) => p.status === "draft").length,
+    scheduled: posts.filter((p) => p.status === "scheduled").length,
+    published: posts.filter((p) => p.status === "published").length,
+  };
 
-    return {
-      connectedAccounts: accounts.length,
-      drafts,
-      scheduled,
-      published,
-    };
-  }, [accounts, posts]);
+  const funnelSteps = [
+    {
+      title: "Connect an account",
+      description: accounts.length > 0 ? `${accounts.length} account${accounts.length > 1 ? "s" : ""} connected.` : "Link your YouTube or LinkedIn account.",
+      href: workspaceRoutes.accounts,
+      action: "View Accounts",
+      icon: Link2,
+      done: accounts.length > 0,
+    },
+    {
+      title: "Create your first post",
+      description: posts.length > 0 ? `${posts.length} post${posts.length > 1 ? "s" : ""} in your pipeline.` : "Import a YouTube video or write a LinkedIn post.",
+      href: workspaceRoutes.newPost,
+      action: "Open Composer",
+      icon: PenSquare,
+      done: posts.length > 0,
+    },
+    {
+      title: "Schedule or publish",
+      description: stats.scheduled > 0 ? `${stats.scheduled} post${stats.scheduled > 1 ? "s" : ""} scheduled.` : "Set a publish date and let Occium handle the rest.",
+      href: workspaceRoutes.queue,
+      action: "View Queue",
+      icon: CalendarClock,
+      done: stats.scheduled > 0 || stats.published > 0,
+    },
+  ];
 
-  const funnelSteps = useMemo(() => {
-    const hasAccounts = stats.connectedAccounts > 0;
-    const hasPosts = posts.length > 0;
-    const hasLiveContent = stats.scheduled + stats.published > 0;
-
-    return [
-      {
-        title: "Connect an account",
-        description: "Link a YouTube channel or LinkedIn profile so the workspace has a destination.",
-        href: workspaceRoutes.accounts,
-        action: hasAccounts ? "Manage accounts" : "Connect account",
-        icon: Link2,
-        done: hasAccounts,
-      },
-      {
-        title: "Create your first post",
-        description: "Draft a post or import a video so the workspace has content to work with.",
-        href: workspaceRoutes.newPost,
-        action: hasPosts ? "Create another post" : "Create first post",
-        icon: PenSquare,
-        done: hasPosts,
-      },
-      {
-        title: "Schedule or publish",
-        description: "Move content out of draft so your queue starts doing real work.",
-        href: hasLiveContent ? workspaceRoutes.queue : workspaceRoutes.newPost,
-        action: hasLiveContent ? "Open queue" : "Schedule a post",
-        icon: CalendarClock,
-        done: hasLiveContent,
-      },
-    ];
-  }, [posts.length, stats.connectedAccounts, stats.published, stats.scheduled]);
 
   const completedSteps = funnelSteps.filter((step) => step.done).length;
   const nextStep = funnelSteps.find((step) => !step.done) || funnelSteps[funnelSteps.length - 1];
@@ -79,9 +67,9 @@ const Dashboard = () => {
     <div className="space-y-10">
       <div className="flex justify-between items-end gap-6">
         <div>
-          <h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
+<h1 className="text-5xl font-light text-white mb-2 tracking-tight">Overview</h1>
           <p className="text-white/40 font-light">
-            Welcome back, {user?.name.split(" ")[0]}. This workspace reflects live local state.
+            Your content pipeline — live.
           </p>
         </div>
         <div className="text-right hidden md:block">
@@ -206,36 +194,9 @@ const Dashboard = () => {
                 </Link>
               </div>
 
-              {posts.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/5 p-8 text-center bg-white/[0.01]">
-                  <p className="text-white/20 text-xs tracking-widest uppercase">No active pipeline</p>
+<div className="rounded-2xl border border-dashed border-white/5 p-8 text-center bg-white/[0.01]">
+                  <p className="text-white/20 text-xs tracking-widest uppercase">UI Shell - No Pipeline Data</p>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {posts.slice(0, 3).map((post) => (
-                    <div key={post._id} className="flex items-center gap-4 group/post cursor-default">
-                      <div className={`w-1 h-10 rounded-full transition-colors ${
-                        post.status === 'scheduled' ? 'bg-occium-gold' : 'bg-white/10'
-                      }`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-white text-sm font-medium line-clamp-1 group-hover/post:text-occium-gold transition-colors">
-                          {post.title || post.description || "Untitled"}
-                        </p>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider mt-1">
-                          {post.scheduled_at 
-                            ? `Release ${formatDistanceToNow(new Date(post.scheduled_at), { addSuffix: true })}` 
-                            : 'Draft Status'}
-                        </p>
-                      </div>
-                      <div className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
-                        post.platform === 'youtube' ? 'text-red-400 border-red-500/20' : 'text-blue-400 border-blue-500/20'
-                      }`}>
-                        {post.platform.toUpperCase()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </GlassCard>
 
             <LinkedInSpotlightSection />

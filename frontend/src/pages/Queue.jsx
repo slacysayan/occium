@@ -2,15 +2,14 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlassCard } from "../components/ui/GlassCard";
 import { useWorkspace } from "../context/WorkspaceContext";
+import { postsApi } from "../lib/api";
+import { Calendar as CalendarIcon, Clock, Trash2, Edit2 } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { format, isSameDay, parseISO } from "date-fns";
-import { Calendar as CalendarIcon, Clock, Trash2, Edit2 } from "lucide-react";
-import { toast } from "sonner";
-import { deletePost } from "../lib/localApp";
 import { workspaceRoutes } from "../lib/routes";
 
 const Queue = () => {
-  const { posts } = useWorkspace();
+  const { posts, refresh } = useWorkspace();
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const scheduledPosts = useMemo(
@@ -35,22 +34,12 @@ const Queue = () => {
   };
 
   const removePost = async (id) => {
-    const post = posts.find((p) => p._id === id);
-    const platformNote = post?.platform === "linkedin"
-      ? "\n\nNote: This will NOT cancel the scheduled job on Render. If the LinkedIn post was already scheduled on the helper, it may still be published."
-      : post?.platform === "youtube"
-      ? "\n\nNote: If this video was already uploaded to YouTube with a publishAt date, it will still go live on YouTube's schedule."
-      : "";
-
-    if (!window.confirm(`Remove this post from your local queue?${platformNote}`)) {
-      return;
-    }
-
+    if (!window.confirm("Remove this post from the queue?")) return;
     try {
-      deletePost(id);
-      toast.success("Post removed from local queue");
-    } catch (error) {
-      console.error(error);
+      await postsApi.remove(id);
+      toast.success("Post removed");
+      refresh();
+    } catch {
       toast.error("Failed to delete");
     }
   };
@@ -97,7 +86,7 @@ const Queue = () => {
               ) : (
                 selectedDatePosts.map((post) => (
                   <div
-                    key={post._id}
+                    key={post.id}
                     className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-start justify-between group hover:bg-white/10 transition-colors"
                   >
                     <div className="flex gap-4">
@@ -122,7 +111,7 @@ const Queue = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        onClick={() => removePost(post._id)}
+                        onClick={() => removePost(post.id)}
                         className="p-2 hover:bg-red-500/20 rounded-full text-white/60 hover:text-red-500 transition-colors"
                       >
                         <Trash2 size={16} />

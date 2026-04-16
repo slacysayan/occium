@@ -1,111 +1,80 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { useAuth } from "./AuthContext";
-import {
-  getLocalHelperStatus,
-  syncLinkedInScheduledPosts,
-  getWorkspaceState,
-  subscribeToWorkspaceState,
-} from "../lib/localApp";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { accountsApi, postsApi } from "../lib/api";
 
 const WorkspaceContext = createContext(null);
 
 export const useWorkspace = () => {
-  const context = useContext(WorkspaceContext);
-
-  if (!context) {
-    throw new Error("useWorkspace must be used within a WorkspaceProvider");
-  }
-
-  return context;
+  const ctx = useContext(WorkspaceContext);
+  if (!ctx) throw new Error("useWorkspace must be used within WorkspaceProvider");
+  return ctx;
 };
 
 export const WorkspaceProvider = ({ children }) => {
-  const { user } = useAuth();
-  const [snapshot, setSnapshot] = useState(() => getWorkspaceState());
-  const [helperStatus, setHelperStatus] = useState({
-    available: false,
-    status: "checking",
-  });
-  const [helperLoading, setHelperLoading] = useState(false);
-  const [helperCheckedAt, setHelperCheckedAt] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => subscribeToWorkspaceState(setSnapshot), []);
-
-  const activeUserId = user?.id || snapshot.currentUser?.id;
-
-  const accounts = useMemo(
-    () => snapshot.accounts.filter((account) => account.user_id === activeUserId),
-    [activeUserId, snapshot.accounts],
-  );
-  const posts = useMemo(
-    () => snapshot.posts.filter((post) => post.user_id === activeUserId),
-    [activeUserId, snapshot.posts],
-  );
-
-  const refreshHelperStatus = async () => {
-    setHelperLoading(true);
+  const refresh = useCallback(async () => {
     try {
-      const nextStatus = await getLocalHelperStatus();
-      setHelperStatus(nextStatus);
-      setHelperCheckedAt(new Date().toISOString());
-      return nextStatus;
+      const [accRes, postsRes] = await Promise.all([
+        accountsApi.list(),
+        postsApi.list(),
+      ]);
+      setAccounts(accRes.data);
+      setPosts(postsRes.data);
+    } catch {
+      // not logged in yet — keep empty state
     } finally {
-      setHelperLoading(false);
+      setLoading(false);
     }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Listen for account connection redirects (?connected=youtube|linkedin)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const error = params.get("error");
+    if (connected) {
+      refresh();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [refresh]);
+
+  const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
+  const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
+
+  const removePost = async (id) => {
+    const { postsApi: api } = await import("../lib/api");
+    await api.remove(id);
+    setPosts((prev) => prev.filter((p) => p.id !== id));
   };
 
-  useEffect(() => {
-    if (!activeUserId) {
-      return undefined;
-    }
+  const removeAccount = async (id) => {
+    await accountsApi.disconnect(id);
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+  };
 
-    let isMounted = true;
-
-    const pollHelper = async () => {
-      const nextStatus = await getLocalHelperStatus();
-      if (!isMounted) {
-        return;
-      }
-
-      setHelperStatus(nextStatus);
-      setHelperCheckedAt(new Date().toISOString());
-
-      if (nextStatus.available) {
-        await syncLinkedInScheduledPosts().catch((error) => {
-          console.error("Failed to sync LinkedIn scheduled posts", error);
-        });
-      }
-    };
-
-    pollHelper();
-    const intervalId = window.setInterval(pollHelper, 15000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [activeUserId]);
-
-  const value = useMemo(
-    () => ({
-      currentUser: snapshot.currentUser,
+  return (
+    <WorkspaceContext.Provider value={{
       accounts,
       posts,
-      youtubeAccounts: accounts.filter((account) => account.platform === "youtube"),
-      linkedinAccounts: accounts.filter((account) => account.platform === "linkedin"),
-      helperStatus,
-      helperLoading,
-      helperCheckedAt,
-      refreshHelperStatus,
-    }),
-    [accounts, helperCheckedAt, helperLoading, helperStatus, posts, snapshot.currentUser],
+      youtubeAccounts,
+      linkedinAccounts,
+      loading,
+      refresh,
+      removePost,
+      removeAccount,
+      // legacy compat
+      helperStatus: { available: true, status: "connected" },
+      helperLoading: false,
+      helperCheckedAt: new Date().toISOString(),
+    }}>
+      {children}
+    </WorkspaceContext.Provider>
   );
-
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 };

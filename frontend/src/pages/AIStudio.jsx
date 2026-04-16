@@ -3,6 +3,9 @@ import { GlassCard } from "../components/ui/GlassCard";
 import { Wand2, Image as ImageIcon, Copy, Loader2, Sparkles, Mic, Save } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { aiApi } from "../lib/api";
+
+import { aiApi } from "../lib/api";
 
 const AIStudio = () => {
   const [prompt, setPrompt] = useState("");
@@ -17,15 +20,14 @@ const AIStudio = () => {
   const [selectedVoice, setSelectedVoice] = useState(1);
 
   const handleGenerate = async () => {
-    if (!prompt) {
-      return;
-    }
-
+    if (!prompt) return;
     setIsGenerating(true);
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 1200));
-      setGeneratedText("[LOCAL MODE] AI generation is paused during backend migration.");
-      toast.info("Backend migration in progress. Action disabled.");
+      const res = await aiApi.ghostwrite({
+        title: prompt,
+        voiceProfile: voices.find((v) => v.id === selectedVoice)?.name ?? "Professional",
+      });
+      setGeneratedText(res.data.post);
     } catch (error) {
       console.error(error);
       toast.error("Generation failed");

@@ -4,58 +4,32 @@ import { useAuth } from "../context/AuthContext";
 import { useWorkspace } from "../context/WorkspaceContext";
 import { Check, Plus, Trash2, Youtube, Linkedin, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { deleteAccount } from "../lib/localApp";
 
 const OCCIUM_MARK_SRC = "/branding/occium-mark.webp";
 
 const Accounts = () => {
-  const { connectYouTubeAccount, connectLinkedInAccount } = useAuth();
-  const { accounts } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
+  const { connectYouTubeAccount, connectLinkedInAccount } = useAuth();
+  const { youtubeAccounts, linkedinAccounts, removeAccount } = useWorkspace();
 
-  const connectLinkedIn = async () => {
-    try {
-      setIsLoading(true);
-      await connectLinkedInAccount();
-      toast.success("LinkedIn account linked successfully!");
-    } catch (error) {
-      console.error(error);
-      toast.error(error?.message || "Failed to connect LinkedIn");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const connectYouTube = async () => {
-    try {
-      setIsLoading(true);
-      await connectYouTubeAccount();
-      toast.success("YouTube channel linked successfully!");
-    } catch (error) {
-      console.error(error);
-      toast.error(error?.message || "Could not connect YouTube");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const connectYouTube = () => connectYouTubeAccount();
+  const connectLinkedIn = () => connectLinkedInAccount();
 
   const disconnectAccount = async (id) => {
-    if (!window.confirm("Disconnect this account from local engine?")) {
-      return;
-    }
+    if (!window.confirm("Disconnect this account?")) return;
+    setIsLoading(true);
     try {
-      deleteAccount(id);
-      toast.success("Account removed");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to remove account");
+      await removeAccount(id);
+      toast.success("Account disconnected");
+    } catch {
+      toast.error("Failed to disconnect");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const youtubeAccounts = accounts.filter((account) => account.platform === "youtube");
-  const linkedinAccounts = accounts.filter((account) => account.platform === "linkedin");
-
   return (
+
     <div className="space-y-10 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
