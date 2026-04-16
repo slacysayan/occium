@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { accountsApi, postsApi } from "../lib/api";
 
 const WorkspaceContext = createContext(null);
@@ -13,6 +13,7 @@ export const WorkspaceProvider = ({ children }) => {
   const [accounts, setAccounts] = useState([]);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const retryTimers = useRef([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -22,8 +23,9 @@ export const WorkspaceProvider = ({ children }) => {
       ]);
       setAccounts(accRes.data);
       setPosts(postsRes.data);
+      return accRes.data;
     } catch {
-      // not logged in yet — keep empty state
+      return [];
     } finally {
       setLoading(false);
     }
@@ -31,21 +33,45 @@ export const WorkspaceProvider = ({ children }) => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Listen for account connection redirects (?connected=youtube|linkedin)
+  // After OAuth redirect: retry 3x with exponential backoff (800/1600/2400ms)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("connected");
     const error = params.get("error");
+
     if (connected) {
-      // Small delay to ensure session cookie is set before fetching
-      setTimeout(() => { refresh(); }, 500);
       window.history.replaceState({}, "", window.location.pathname);
+      retryTimers.current.forEach(clearTimeout);
+      retryTimers.current = [];
+
+      [800, 1600, 2400].forEach((delay, i) => {
+        const timer = setTimeout(async () => {
+          try {
+            const [accRes, postsRes] = await Promise.all([
+              accountsApi.list(),
+              postsApi.list(),
+            ]);
+            setAccounts(accRes.data);
+            setPosts(postsRes.data);
+            setLoading(false);
+            if (accRes.data.length > 0) {
+              retryTimers.current.forEach(clearTimeout);
+            }
+          } catch (err) {
+            console.error(`[workspace] Retry ${i + 1} failed:`, err);
+          }
+        }, delay);
+        retryTimers.current.push(timer);
+      });
     }
+
     if (error) {
       console.error("[workspace] OAuth error:", error);
       window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [refresh]);
+
+    return () => { retryTimers.current.forEach(clearTimeout); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const youtubeAccounts = accounts.filter((a) => a.platform === "youtube");
   const linkedinAccounts = accounts.filter((a) => a.platform === "linkedin");
@@ -62,15 +88,8 @@ export const WorkspaceProvider = ({ children }) => {
 
   return (
     <WorkspaceContext.Provider value={{
-      accounts,
-      posts,
-      youtubeAccounts,
-      linkedinAccounts,
-      loading,
-      refresh,
-      removePost,
-      removeAccount,
-      // legacy compat
+      accounts, posts, youtubeAccounts, linkedinAccounts,
+      loading, refresh, removePost, removeAccount,
       helperStatus: { available: true, status: "connected" },
       helperLoading: false,
       helperCheckedAt: new Date().toISOString(),
