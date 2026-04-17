@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 
@@ -10,42 +10,32 @@ const API_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
 export const AuthWrapper = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
-    // Handle Supabase auth errors returned in URL (e.g. server_error from Google)
+    // Handle Supabase auth errors in URL
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
     const authError = params.get("error") || hashParams.get("error");
-    const errorDesc = params.get("error_description") || hashParams.get("error_description");
     if (authError) {
-      console.error("[auth] Supabase auth error:", authError, errorDesc);
+      console.error("[auth] Supabase error:", authError);
       window.history.replaceState({}, "", window.location.pathname);
-      if (authError === "server_error") {
-        toast.error("Google sign-in failed — please try again.");
-      }
+      toast.error("Google sign-in failed — please try again.");
     }
 
-    // Get initial session once
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!initialized.current) {
-        setUser(session?.user ?? null);
-        setLoading(false);
-        initialized.current = true;
-      }
-    });
-
+    // onAuthStateChange is the ONLY source of truth for user state.
+    // It fires: INITIAL_SESSION (on load), SIGNED_IN (after OAuth redirect), SIGNED_OUT, TOKEN_REFRESHED
+    // Do NOT use getSession() separately — it races with onAuthStateChange and causes the "initialized" guard bug
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "INITIAL_SESSION" && initialized.current) return;
       setUser(session?.user ?? null);
       setLoading(false);
-      initialized.current = true;
+      if (event === "SIGNED_IN") {
+        setSigningIn(false);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const [signingIn, setSigningIn] = useState(false);
 
   const signIn = async () => {
     setSigningIn(true);

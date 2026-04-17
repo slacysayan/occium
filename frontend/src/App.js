@@ -29,7 +29,9 @@ const MarketingLayout = () => (
 
 const ProtectedWorkspaceLayout = () => {
   const { user, loading } = useAuth();
-  if (loading) {
+  const hasOAuthHash = window.location.hash.includes("access_token");
+
+  if (loading || hasOAuthHash) {
     return (
       <div className="relative min-h-screen flex items-center justify-center bg-[#071119]">
         <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
