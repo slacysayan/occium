@@ -14,13 +14,16 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// On 401, sign out
+// On 401, only redirect if we had a valid session (prevents redirect loop when backend is down)
 api.interceptors.response.use(
   (r) => r,
   async (error) => {
     if (error.response?.status === 401) {
-      await supabase.auth.signOut();
-      window.location.href = "/";
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.auth.signOut();
+        window.location.href = "/signin";
+      }
     }
     return Promise.reject(error);
   }

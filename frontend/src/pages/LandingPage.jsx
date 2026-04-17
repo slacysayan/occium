@@ -183,10 +183,10 @@ const LandingPage = () => (
             See workflow
           </a>
           <Link
-            to={workspaceRoutes.dashboard}
+            to="/signin"
             className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition-transform hover:scale-[1.02]"
           >
-            Open workspace <ArrowRight size={16} />
+            Sign in <ArrowRight size={16} />
           </Link>
         </div>
       </nav>
@@ -316,7 +316,7 @@ const LandingPage = () => (
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              to={workspaceRoutes.dashboard}
+              to="/signin"
               className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-base font-medium text-slate-950 transition-transform hover:scale-[1.02]"
             >
               Enter the workspace <ArrowRight size={18} />
@@ -543,7 +543,7 @@ const LandingPage = () => (
 
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              to={workspaceRoutes.dashboard}
+              to="/signin"
               className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-base font-medium text-slate-950 transition-transform hover:scale-[1.02]"
             >
               Open the product workspace <ArrowRight size={18} />
