@@ -13,7 +13,20 @@ export const AuthWrapper = ({ children }) => {
   const initialized = useRef(false);
 
   useEffect(() => {
-    // Get initial session once — prevents double-set with onAuthStateChange
+    // Handle Supabase auth errors returned in URL (e.g. server_error from Google)
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const authError = params.get("error") || hashParams.get("error");
+    const errorDesc = params.get("error_description") || hashParams.get("error_description");
+    if (authError) {
+      console.error("[auth] Supabase auth error:", authError, errorDesc);
+      window.history.replaceState({}, "", window.location.pathname);
+      if (authError === "server_error") {
+        toast.error("Google sign-in failed — please try again.");
+      }
+    }
+
+    // Get initial session once
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!initialized.current) {
         setUser(session?.user ?? null);
