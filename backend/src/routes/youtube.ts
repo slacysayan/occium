@@ -36,7 +36,7 @@ router.get("/channel", requireAuth, async (req: Request, res: Response) => {
     const ytAccounts = await db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
+      .where(and(eq(accounts.userId, req.userId), eq(accounts.platform, "youtube")));
 
     if (!ytAccounts.length) {
       return res.status(404).json({ error: "No YouTube account connected" });
@@ -53,7 +53,7 @@ router.post("/sync-channel", requireAuth, async (req: Request, res: Response) =>
   const { accountId } = req.body as { accountId: string };
   try {
     const [account] = await db.select().from(accounts)
-      .where(and(eq(accounts.id, accountId as string), eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
+      .where(and(eq(accounts.id, accountId as string), eq(accounts.userId, req.userId), eq(accounts.platform, "youtube")));
     if (!account) return res.status(404).json({ error: "Account not found" });
 
     const axiosLib = (await import("axios")).default;
@@ -91,7 +91,7 @@ router.post(
     if (!accountId || !title) return res.status(400).json({ error: "accountId and title are required" });
 
     const [account] = await db.select().from(accounts)
-      .where(and(eq(accounts.id, accountId), eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
+      .where(and(eq(accounts.id, accountId), eq(accounts.userId, req.userId), eq(accounts.platform, "youtube")));
     if (!account) return res.status(404).json({ error: "YouTube account not found" });
 
     let accessToken = account.accessToken;
@@ -102,7 +102,7 @@ router.post(
     }
 
     const [post] = await db.insert(posts).values({
-      userId: req.session.userId!,
+      userId: req.userId,
       accountId,
       platform: "youtube",
       title,
@@ -157,7 +157,7 @@ router.post("/import", requireAuth, async (req: Request, res: Response) => {
   }
 
   const [account] = await db.select().from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.userId, req.session.userId!), eq(accounts.platform, "youtube")));
+    .where(and(eq(accounts.id, accountId), eq(accounts.userId, req.userId), eq(accounts.platform, "youtube")));
   if (!account) return res.status(404).json({ error: "YouTube account not found" });
 
   let accessToken = account.accessToken;
@@ -168,7 +168,7 @@ router.post("/import", requireAuth, async (req: Request, res: Response) => {
   }
 
   const [post] = await db.insert(posts).values({
-    userId: req.session.userId!,
+    userId: req.userId,
     accountId, platform: "youtube", sourceUrl, title,
     description: description ?? "", tags: tags ?? [],
     privacyStatus: (privacyStatus ?? "private") as "public" | "unlisted" | "private",

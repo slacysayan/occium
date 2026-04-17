@@ -13,13 +13,15 @@ function optionalEnv(key: string, fallback = ""): string {
 
 export const env = {
   DATABASE_URL: requireEnv("DATABASE_URL"),
+  SUPABASE_URL: requireEnv("SUPABASE_URL"),
+  SUPABASE_SERVICE_KEY: requireEnv("SUPABASE_SERVICE_KEY"),
+  STATE_JWT_SECRET: requireEnv("STATE_JWT_SECRET"),
   GOOGLE_CLIENT_ID: requireEnv("GOOGLE_CLIENT_ID"),
   GOOGLE_CLIENT_SECRET: requireEnv("GOOGLE_CLIENT_SECRET"),
   YOUTUBE_API_KEY: optionalEnv("YOUTUBE_API_KEY"),
   LINKEDIN_CLIENT_ID: requireEnv("LINKEDIN_CLIENT_ID"),
   LINKEDIN_CLIENT_SECRET: requireEnv("LINKEDIN_CLIENT_SECRET"),
   GEMINI_API_KEY: requireEnv("GEMINI_API_KEY"),
-  SESSION_SECRET: requireEnv("SESSION_SECRET"),
   PORT: parseInt(optionalEnv("PORT", "4000")),
   FRONTEND_URL: optionalEnv("FRONTEND_URL", "http://localhost:3000"),
   BACKEND_URL: optionalEnv("BACKEND_URL", "http://localhost:4000"),

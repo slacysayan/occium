@@ -7,6 +7,7 @@ import { WorkspaceProvider } from "./context/WorkspaceContext";
 import AppBackdrop from "./components/layout/AppBackdrop";
 import Sidebar from "./components/layout/Sidebar";
 import LandingPage from "./pages/LandingPage";
+import SignIn from "./pages/SignIn";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import Dashboard from "./pages/Dashboard";
@@ -22,27 +23,26 @@ import { workspaceRoutes } from "./lib/routes";
 const MarketingLayout = () => (
   <div className="relative min-h-screen">
     <AppBackdrop />
-    <main className="relative z-10 min-h-screen">
-      <Outlet />
-    </main>
+    <main className="relative z-10 min-h-screen"><Outlet /></main>
   </div>
 );
 
-const WorkspaceLayout = () => {
-  const { loading } = useAuth();
-
+const ProtectedWorkspaceLayout = () => {
+  const { user, loading } = useAuth();
   if (loading) {
-    return null;
+    return (
+      <div className="relative min-h-screen flex items-center justify-center bg-[#071119]">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+      </div>
+    );
   }
-
+  if (!user) return <Navigate to="/signin" replace />;
   return (
     <div className="relative flex min-h-screen">
       <AppBackdrop />
       <Sidebar />
       <main className="flex-1 md:ml-64 p-6 md:p-12 overflow-y-auto min-h-screen relative z-10">
-        <div className="max-w-7xl mx-auto pb-20">
-          <Outlet />
-        </div>
+        <div className="max-w-7xl mx-auto pb-20"><Outlet /></div>
       </main>
     </div>
   );
@@ -56,12 +56,12 @@ const App = () => (
           <Routes>
             <Route element={<MarketingLayout />}>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/signin" element={<SignIn />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/connect" element={<LinkedInCallback />} />
             </Route>
-
-            <Route element={<WorkspaceLayout />}>
+            <Route element={<ProtectedWorkspaceLayout />}>
               <Route path={workspaceRoutes.dashboard} element={<Dashboard />} />
               <Route path={workspaceRoutes.accounts} element={<Accounts />} />
               <Route path={workspaceRoutes.newPost} element={<NewPost />} />
@@ -69,14 +69,8 @@ const App = () => (
               <Route path={workspaceRoutes.aiStudio} element={<AIStudio />} />
               <Route path={workspaceRoutes.settings} element={<Settings />} />
             </Route>
-
-            <Route path="/login" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
+            <Route path="/login" element={<Navigate to="/signin" replace />} />
             <Route path="/app" element={<Navigate to={workspaceRoutes.dashboard} replace />} />
-            <Route path="/accounts" element={<Navigate to={workspaceRoutes.accounts} replace />} />
-            <Route path="/new" element={<Navigate to={workspaceRoutes.newPost} replace />} />
-            <Route path="/queue" element={<Navigate to={workspaceRoutes.queue} replace />} />
-            <Route path="/ai-studio" element={<Navigate to={workspaceRoutes.aiStudio} replace />} />
-            <Route path="/settings" element={<Navigate to={workspaceRoutes.settings} replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>

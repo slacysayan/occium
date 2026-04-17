@@ -13,7 +13,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response) => {
     const [post] = await db
       .select()
       .from(posts)
-      .where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)));
+      .where(and(eq(posts.id, id), eq(posts.userId, req.userId)));
     if (!post) return res.status(404).json({ error: "Post not found" });
     res.json(post);
   } catch (err) {
@@ -27,7 +27,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     const userPosts = await db
       .select()
       .from(posts)
-      .where(eq(posts.userId, req.session.userId!))
+      .where(eq(posts.userId, req.userId))
       .orderBy(desc(posts.createdAt));
 
     res.json(userPosts);
@@ -54,7 +54,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     const [post] = await db
       .insert(posts)
       .values({
-        userId: req.session.userId!,
+        userId: req.userId,
         accountId,
         platform,
         sourceUrl,
@@ -81,7 +81,7 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
     const [post] = await db
       .update(posts)
       .set({ ...req.body, scheduledAt: req.body.scheduledAt ? new Date(req.body.scheduledAt) : undefined })
-      .where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)))
+      .where(and(eq(posts.id, id), eq(posts.userId, req.userId)))
       .returning();
     if (!post) return res.status(404).json({ error: "Post not found" });
     res.json(post);
@@ -94,7 +94,7 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
 router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
-    await db.delete(posts).where(and(eq(posts.id, id), eq(posts.userId, req.session.userId!)));
+    await db.delete(posts).where(and(eq(posts.id, id), eq(posts.userId, req.userId)));
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete post" });

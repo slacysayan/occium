@@ -12,7 +12,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     const userAccounts = await db
       .select()
       .from(accounts)
-      .where(eq(accounts.userId, req.session.userId!));
+      .where(eq(accounts.userId, req.userId));
 
     // Strip tokens
     const safe = userAccounts.map(({ accessToken, refreshToken, ...rest }) => rest);
@@ -26,7 +26,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
-    await db.delete(accounts).where(and(eq(accounts.id, id), eq(accounts.userId, req.session.userId!)));
+    await db.delete(accounts).where(and(eq(accounts.id, id), eq(accounts.userId, req.userId)));
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to disconnect account" });

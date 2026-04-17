@@ -18,27 +18,34 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["**/*.test.ts"],
+    "testMatch": [
+      "**/*.test.ts"
+    ],
     "transform": {
-      "^.+\\.tsx?$": ["ts-jest", { "diagnostics": false }]
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "diagnostics": false
+        }
+      ]
     }
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.103.2",
+    "@opentelemetry/api": "^1.9.1",
+    "@supabase/supabase-js": "^2.103.3",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "axios": "^1.8.4",
-    "connect-pg-simple": "^10.0.0",
+    "better-auth": "^1.6.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.41.0",
     "express": "^4.21.2",
-    "express-session": "^1.18.1",
+    "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "node-cron": "^3.0.3",
-    "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0",
     "pg": "^8.13.3",
     "zod": "^3.24.4"
   },

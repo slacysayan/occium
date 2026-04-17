@@ -33,17 +33,34 @@ export const WorkspaceProvider = ({ children }) => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // After OAuth redirect: retry 3x with exponential backoff (800/1600/2400ms)
+  // After OAuth redirect: read accounts from URL param (embedded by backend)
+  // then retry API calls with exponential backoff as fallback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("connected");
+    const accountsParam = params.get("accounts");
     const error = params.get("error");
 
     if (connected) {
       window.history.replaceState({}, "", window.location.pathname);
+
+      // Backend embeds accounts in redirect URL — use immediately, no API call needed
+      if (accountsParam) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(accountsParam));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAccounts(parsed);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error("[workspace] Failed to parse accounts from URL:", e);
+        }
+      }
+
+      // Fallback: retry API calls with exponential backoff
       retryTimers.current.forEach(clearTimeout);
       retryTimers.current = [];
-
       [800, 1600, 2400].forEach((delay, i) => {
         const timer = setTimeout(async () => {
           try {
@@ -54,9 +71,7 @@ export const WorkspaceProvider = ({ children }) => {
             setAccounts(accRes.data);
             setPosts(postsRes.data);
             setLoading(false);
-            if (accRes.data.length > 0) {
-              retryTimers.current.forEach(clearTimeout);
-            }
+            if (accRes.data.length > 0) retryTimers.current.forEach(clearTimeout);
           } catch (err) {
             console.error(`[workspace] Retry ${i + 1} failed:`, err);
           }

@@ -1,51 +1,68 @@
 import axios from "axios";
+import { supabase } from "./supabase";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
 
-export const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true,
+export const api = axios.create({ baseURL: API_URL });
+
+// Attach Supabase JWT on every request
+api.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  return config;
 });
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
+// On 401, sign out
+api.interceptors.response.use(
+  (r) => r,
+  async (error) => {
+    if (error.response?.status === 401) {
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const authApi = {
   me: () => api.get("/auth/me"),
-  logout: () => api.post("/auth/logout"),
-  connectGoogle: () => { window.location.href = `${API_URL}/auth/google`; },
-  connectLinkedIn: () => { window.location.href = `${API_URL}/auth/linkedin`; },
+  logout: () => supabase.auth.signOut(),
+  connectGoogle: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch(`${API_URL}/auth/youtube/init`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const { url } = await res.json();
+    window.location.href = url;
+  },
+  connectLinkedIn: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch(`${API_URL}/auth/linkedin/init`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const { url } = await res.json();
+    window.location.href = url;
+  },
 };
-
-// ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export const accountsApi = {
   list: () => api.get("/api/accounts"),
   disconnect: (id) => api.delete(`/api/accounts/${id}`),
 };
 
-// ─── YouTube ──────────────────────────────────────────────────────────────────
-
 export const youtubeApi = {
   metadata: (url) => api.get("/api/youtube/metadata", { params: { url } }),
-  upload: (formData) => api.post("/api/youtube/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  }),
+  upload: (formData) => api.post("/api/youtube/upload", formData, { headers: { "Content-Type": "multipart/form-data" } }),
   importFromUrl: (payload) => api.post("/api/youtube/import", payload),
 };
-
-// ─── LinkedIn ─────────────────────────────────────────────────────────────────
 
 export const linkedinApi = {
   post: (payload) => api.post("/api/linkedin/post", payload),
 };
 
-// ─── AI ───────────────────────────────────────────────────────────────────────
-
 export const aiApi = {
   ghostwrite: (payload) => api.post("/api/ai/ghostwrite", payload),
 };
-
-// ─── Posts ────────────────────────────────────────────────────────────────────
 
 export const postsApi = {
   list: () => api.get("/api/posts"),

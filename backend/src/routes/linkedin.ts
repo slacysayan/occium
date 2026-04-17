@@ -28,7 +28,7 @@ router.post("/post", requireAuth, async (req: Request, res: Response) => {
       .where(
         and(
           eq(accounts.id, accountId),
-          eq(accounts.userId, req.session.userId!),
+          eq(accounts.userId, req.userId),
           eq(accounts.platform, "linkedin")
         )
       );
@@ -42,7 +42,7 @@ router.post("/post", requireAuth, async (req: Request, res: Response) => {
       const [post] = await db
         .insert(posts)
         .values({
-          userId: req.session.userId!,
+          userId: req.userId,
           accountId,
           platform: "linkedin",
           description: text,
@@ -69,7 +69,7 @@ router.post("/post", requireAuth, async (req: Request, res: Response) => {
     const [post] = await db
       .insert(posts)
       .values({
-        userId: req.session.userId!,
+        userId: req.userId,
         accountId,
         platform: "linkedin",
         description: text,
