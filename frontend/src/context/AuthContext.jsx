@@ -45,16 +45,23 @@ export const AuthWrapper = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const [signingIn, setSigningIn] = useState(false);
+
   const signIn = async () => {
+    setSigningIn(true);
     const redirectBase = process.env.REACT_APP_SITE_URL || window.location.origin;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${redirectBase}/workspace/accounts`,
         scopes: "profile email",
+        queryParams: { access_type: "offline", prompt: "consent" },
       },
     });
-    if (error) toast.error(`Sign in failed: ${error.message}`);
+    if (error) {
+      toast.error(`Sign in failed: ${error.message}`);
+      setSigningIn(false);
+    }
   };
 
   const signOut = async () => {
@@ -104,7 +111,7 @@ export const AuthWrapper = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, signIn, signOut,
+      user, loading, signingIn, signIn, signOut,
       connectYouTubeAccount, connectLinkedInAccount, refreshSession,
       loginAsDemo: () => toast.info("Use Sign in with Google"),
       logout: signOut,
