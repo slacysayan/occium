@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 
@@ -10,16 +10,23 @@ const API_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
 export const AuthWrapper = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const initialized = useRef(false);
 
   useEffect(() => {
+    // Get initial session once — prevents double-set with onAuthStateChange
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+      if (!initialized.current) {
+        setUser(session?.user ?? null);
+        setLoading(false);
+        initialized.current = true;
+      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION" && initialized.current) return;
       setUser(session?.user ?? null);
       setLoading(false);
+      initialized.current = true;
     });
 
     return () => subscription.unsubscribe();
@@ -43,8 +50,6 @@ export const AuthWrapper = ({ children }) => {
     window.location.href = "/";
   };
 
-  // YouTube/LinkedIn connections use /auth/youtube/init and /auth/linkedin/init
-  // which return a redirect URL — avoids the Bearer token in URL problem
   const connectYouTubeAccount = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { toast.error("Sign in first"); return; }
@@ -52,9 +57,11 @@ export const AuthWrapper = ({ children }) => {
       const res = await fetch(`${API_URL}/auth/youtube/init`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { url } = await res.json();
       window.location.href = url;
     } catch (err) {
+      console.error("[auth] YouTube init failed:", err);
       toast.error("Failed to start YouTube connection");
     }
   };
@@ -66,9 +73,11 @@ export const AuthWrapper = ({ children }) => {
       const res = await fetch(`${API_URL}/auth/linkedin/init`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { url } = await res.json();
       window.location.href = url;
     } catch (err) {
+      console.error("[auth] LinkedIn init failed:", err);
       toast.error("Failed to start LinkedIn connection");
     }
   };
@@ -81,13 +90,8 @@ export const AuthWrapper = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user,
-      loading,
-      signIn,
-      signOut,
-      connectYouTubeAccount,
-      connectLinkedInAccount,
-      refreshSession,
+      user, loading, signIn, signOut,
+      connectYouTubeAccount, connectLinkedInAccount, refreshSession,
       loginAsDemo: () => toast.info("Use Sign in with Google"),
       logout: signOut,
     }}>
